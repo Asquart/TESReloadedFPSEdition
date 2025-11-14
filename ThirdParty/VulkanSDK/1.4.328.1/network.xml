@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<Network>
+    <ProxyType>1</ProxyType>
+    <Ftp>
+        <Host></Host>
+        <Port>0</Port>
+        <Username></Username>
+        <Password></Password>
+    </Ftp>
+    <Http>
+        <Host></Host>
+        <Port>0</Port>
+        <Username></Username>
+        <Password></Password>
+    </Http>
+    <Repositories/>
+    <LocalCachePath>C:/Users/Asquart/AppData/Local/cache\qt-installer-framework\50a85129-6425-33d0-b69b-8e06ae58272b</LocalCachePath>
+</Network>
