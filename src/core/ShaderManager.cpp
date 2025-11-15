@@ -1,5 +1,27 @@
 #define RESZ_CODE 0x7FA05000
 
+#include <filesystem>
+
+#include "../../Shared/Bridge/Bridge.h"
+#include "../../Shared/Bridge/DXVKInterop.h"
+
+namespace
+{
+void UpdateBridgeComputeToggle()
+{
+        if (!TheSettingManager)
+                return;
+
+        TRBridgeConfiguration configuration{};
+        TRBridge_GetConfiguration(&configuration);
+        if (TheSettingManager->SettingsMain.Shaders.VulkanAmbientOcclusion)
+                configuration.flags |= TR_BRIDGE_FLAG_ENABLE_VULKAN_AO;
+        else
+                configuration.flags &= ~TR_BRIDGE_FLAG_ENABLE_VULKAN_AO;
+        TRBridge_SetConfiguration(&configuration);
+}
+}
+
 /**
 * Initializes the Shader Manager Singleton.
 * The Shader Manager creates and holds onto the Effects activated in the Settings Manager, and sets the constants.
@@ -120,9 +142,11 @@ void ShaderManager::Initialize() {
 	TheShaderManager->RegisterConstant("TESR_SkyLowColor", &TheShaderManager->ShaderConst.skyLowColor);
 	TheShaderManager->RegisterConstant("TESR_HorizonColor", &TheShaderManager->ShaderConst.horizonColor);
 
-	TheShaderManager->InitializeConstants();
+        TheShaderManager->InitializeConstants();
 
-	timer.LogTime("ShaderManager::Initialize");
+        UpdateBridgeComputeToggle();
+
+        timer.LogTime("ShaderManager::Initialize");
 }
 
 void ShaderManager::CreateFrameVertex(UInt32 Width, UInt32 Height, IDirect3DVertexBuffer9** FrameVertex) {
@@ -799,10 +823,73 @@ void ShaderManager::RenderEffects(IDirect3DSurface9* RenderTarget) {
 	// final adjustments
 	Effects.ImageAdjust->Render(Device, RenderTarget, RenderedSurface, 0, false, SourceSurface);
 
-	// debug shader allows to display some of the buffers
-	Effects.Debug->Render(Device, RenderTarget, RenderedSurface, 0, false, SourceSurface);
+        // debug shader allows to display some of the buffers
+        Effects.Debug->Render(Device, RenderTarget, RenderedSurface, 0, false, SourceSurface);
 
-	timer.LogTime("ShaderManager::RenderEffects");
+        static uint64_t sBridgeFrameId = 0;
+        if (TheSettingManager->SettingsMain.Shaders.VulkanAmbientOcclusion)
+        {
+                TRBridgePluginFrameInputs bridgeInputs{};
+                bridgeInputs.frameId = ++sBridgeFrameId;
+                bridgeInputs.renderTargetCount = static_cast<uint32_t>(TRBridge_GetInteropSurfaceCount());
+
+                if (DxvkInterop_IsAvailable())
+                {
+                        DxvkInteropFrameSync frameSync{};
+                        if (DxvkInterop_GetFrameSync(Device, &frameSync) && frameSync.valid)
+                        {
+                                TRBridgeInteropSyncState syncState{};
+                                syncState.frameId = bridgeInputs.frameId;
+
+                                auto appendHandle = [&](TRBridgeInteropHandle* handles, uint32_t& count, TRBridgeInteropHandleType type, uint64_t value, uint64_t auxValue)
+                                {
+                                        if (count >= TR_BRIDGE_MAX_INTEROP_HANDLES || value == 0)
+                                                return;
+
+                                        handles[count].type = type;
+                                        handles[count].value = value;
+                                        handles[count].auxValue = auxValue;
+                                        ++count;
+                                };
+
+                                if (frameSync.acquireSemaphore)
+                                {
+                                        uint64_t auxValue = 0;
+                                        if (frameSync.acquireIsTimeline)
+                                                auxValue = frameSync.acquireValue | TR_BRIDGE_HANDLE_AUX_TIMELINE_BIT;
+                                        else if (frameSync.acquireValue)
+                                                auxValue = frameSync.acquireValue;
+
+                                        appendHandle(syncState.waitHandles, syncState.waitHandleCount, TR_BRIDGE_INTEROP_HANDLE_VK_SEMAPHORE, frameSync.acquireSemaphore, auxValue);
+                                }
+
+                                if (frameSync.releaseSemaphore)
+                                {
+                                        uint64_t auxValue = 0;
+                                        if (frameSync.releaseIsTimeline)
+                                                auxValue = frameSync.releaseValue | TR_BRIDGE_HANDLE_AUX_TIMELINE_BIT;
+                                        else if (frameSync.releaseValue)
+                                                auxValue = frameSync.releaseValue;
+
+                                        appendHandle(syncState.signalHandles, syncState.signalHandleCount, TR_BRIDGE_INTEROP_HANDLE_VK_SEMAPHORE, frameSync.releaseSemaphore, auxValue);
+                                }
+
+                                if (frameSync.completionFence)
+                                {
+                                        appendHandle(syncState.signalHandles, syncState.signalHandleCount, TR_BRIDGE_INTEROP_HANDLE_VK_FENCE, frameSync.completionFence, 0);
+                                }
+
+                                if (syncState.waitHandleCount || syncState.signalHandleCount)
+                                {
+                                        TRBridge_SetInteropSyncState(&syncState);
+                                }
+                        }
+                }
+
+                TRBridge_SignalPluginFrame(&bridgeInputs);
+        }
+
+        timer.LogTime("ShaderManager::RenderEffects");
 }
 
 EffectRecord* ShaderManager::GetEffectByName(const char* Name) {
