@@ -1367,7 +1367,7 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
     }
 
     const TRBridgeInteropSurface* sourceSurface = nullptr;
-    const TRBridgeInteropSurface* depthSurface = nullptr;
+    const TRBridgeInteropSurface* linearDepthSurface = nullptr;
     const TRBridgeInteropSurface* normalsSurface = nullptr;
     for (const auto& surface : frame.surfaces)
     {
@@ -1376,27 +1376,15 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         {
             sourceSurface = &surface;
         }
-        if (!depthSurface &&
-            std::strncmp(surface.descriptor.name, "TESR_DepthTexture", sizeof(surface.descriptor.name)) == 0)
+        if (!linearDepthSurface &&
+            std::strncmp(surface.descriptor.name, "TESR_DepthBuffer", sizeof(surface.descriptor.name)) == 0)
         {
-            depthSurface = &surface;
+            linearDepthSurface = &surface;
         }
         if (!normalsSurface &&
             std::strncmp(surface.descriptor.name, "TESR_NormalsBuffer", sizeof(surface.descriptor.name)) == 0)
         {
             normalsSurface = &surface;
-        }
-    }
-
-    if (!depthSurface)
-    {
-        for (const auto& surface : frame.surfaces)
-        {
-            if (std::strncmp(surface.descriptor.name, "TESR_MainDepthStencil", sizeof(surface.descriptor.name)) == 0)
-            {
-                depthSurface = &surface;
-                break;
-            }
         }
     }
 
@@ -1408,9 +1396,9 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         return false;
     }
 
-    if (!depthSurface)
+    if (!linearDepthSurface)
     {
-        Log("[TESR][Layer] No depth surface available for frame %" PRIu64,
+        Log("[TESR][Layer] No combined depth surface available for frame %" PRIu64,
             static_cast<std::uint64_t>(frame.inputs.frameId));
         DropPendingFrame(frame.inputs.frameId);
         return false;
@@ -1447,24 +1435,24 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         return false;
     }
 
-    VkImage depthImage = VK_NULL_HANDLE;
-    VkImageView depthView = VK_NULL_HANDLE;
-    for (uint32_t i = 0; i < depthSurface->handleCount; ++i)
+    VkImage linearDepthImage = VK_NULL_HANDLE;
+    VkImageView linearDepthView = VK_NULL_HANDLE;
+    for (uint32_t i = 0; i < linearDepthSurface->handleCount; ++i)
     {
-        const auto& handle = depthSurface->handles[i];
+        const auto& handle = linearDepthSurface->handles[i];
         if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE)
         {
-            depthImage = reinterpret_cast<VkImage>(handle.value);
+            linearDepthImage = reinterpret_cast<VkImage>(handle.value);
         }
         else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW)
         {
-            depthView = reinterpret_cast<VkImageView>(handle.value);
+            linearDepthView = reinterpret_cast<VkImageView>(handle.value);
         }
     }
 
-    if (depthImage == VK_NULL_HANDLE || depthView == VK_NULL_HANDLE)
+    if (linearDepthImage == VK_NULL_HANDLE || linearDepthView == VK_NULL_HANDLE)
     {
-        Log("[TESR][Layer] Missing Vulkan handles for depth texture in frame %" PRIu64,
+        Log("[TESR][Layer] Missing Vulkan handles for combined depth texture in frame %" PRIu64,
             static_cast<std::uint64_t>(frame.inputs.frameId));
         DropPendingFrame(frame.inputs.frameId);
         return false;
@@ -1491,12 +1479,6 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
             static_cast<std::uint64_t>(frame.inputs.frameId));
         DropPendingFrame(frame.inputs.frameId);
         return false;
-    }
-
-    VkImageAspectFlags depthAspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    if (depthSurface->descriptor.format == TR_BRIDGE_FORMAT_D24_UNORM_S8_UINT)
-    {
-        depthAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
     }
 
     const uint32_t width = outputSurface->descriptor.width;
@@ -1538,10 +1520,10 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         outputInfo.imageView = outputView;
         outputInfo.sampler = VK_NULL_HANDLE;
 
-        VkDescriptorImageInfo depthInfo{};
-        depthInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        depthInfo.imageView = depthView;
-        depthInfo.sampler = deviceState->sampler;
+        VkDescriptorImageInfo linearDepthInfo{};
+        linearDepthInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        linearDepthInfo.imageView = linearDepthView;
+        linearDepthInfo.sampler = deviceState->sampler;
 
         VkDescriptorImageInfo sourceInfo{};
         sourceInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1566,7 +1548,7 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         writes[1].dstBinding = 1;
         writes[1].descriptorCount = 1;
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writes[1].pImageInfo = &depthInfo;
+        writes[1].pImageInfo = &linearDepthInfo;
 
         writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[2].dstSet = deviceState->descriptorSet;
@@ -1638,25 +1620,21 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         sourceAcquire.subresourceRange.layerCount = 1;
         acquireBarriers[acquireCount++] = sourceAcquire;
 
-        VkImageMemoryBarrier depthAcquire{};
-        if (depthImage != VK_NULL_HANDLE)
-        {
-            depthAcquire.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            depthAcquire.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            depthAcquire.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            depthAcquire.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            depthAcquire.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            depthAcquire.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            depthAcquire.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            depthAcquire.image = depthImage;
-            depthAcquire.subresourceRange.aspectMask = depthAspectMask;
-            depthAcquire.subresourceRange.baseMipLevel = 0;
-            depthAcquire.subresourceRange.levelCount = 1;
-            depthAcquire.subresourceRange.baseArrayLayer = 0;
-            depthAcquire.subresourceRange.layerCount = 1;
-            acquireBarriers[acquireCount++] = depthAcquire;
-            acquireSrcStages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        }
+        VkImageMemoryBarrier linearDepthAcquire{};
+        linearDepthAcquire.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        linearDepthAcquire.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        linearDepthAcquire.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        linearDepthAcquire.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        linearDepthAcquire.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        linearDepthAcquire.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        linearDepthAcquire.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        linearDepthAcquire.image = linearDepthImage;
+        linearDepthAcquire.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        linearDepthAcquire.subresourceRange.baseMipLevel = 0;
+        linearDepthAcquire.subresourceRange.levelCount = 1;
+        linearDepthAcquire.subresourceRange.baseArrayLayer = 0;
+        linearDepthAcquire.subresourceRange.layerCount = 1;
+        acquireBarriers[acquireCount++] = linearDepthAcquire;
 
         VkImageMemoryBarrier normalsAcquire{};
         normalsAcquire.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1734,25 +1712,21 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         sourceRelease.subresourceRange.layerCount = 1;
         releaseBarriers[releaseCount++] = sourceRelease;
 
-        VkImageMemoryBarrier depthRelease{};
-        if (depthImage != VK_NULL_HANDLE)
-        {
-            depthRelease.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            depthRelease.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            depthRelease.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            depthRelease.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            depthRelease.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            depthRelease.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            depthRelease.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            depthRelease.image = depthImage;
-            depthRelease.subresourceRange.aspectMask = depthAspectMask;
-            depthRelease.subresourceRange.baseMipLevel = 0;
-            depthRelease.subresourceRange.levelCount = 1;
-            depthRelease.subresourceRange.baseArrayLayer = 0;
-            depthRelease.subresourceRange.layerCount = 1;
-            releaseBarriers[releaseCount++] = depthRelease;
-            releaseDstStages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        }
+        VkImageMemoryBarrier linearDepthRelease{};
+        linearDepthRelease.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        linearDepthRelease.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        linearDepthRelease.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        linearDepthRelease.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        linearDepthRelease.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        linearDepthRelease.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        linearDepthRelease.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        linearDepthRelease.image = linearDepthImage;
+        linearDepthRelease.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        linearDepthRelease.subresourceRange.baseMipLevel = 0;
+        linearDepthRelease.subresourceRange.levelCount = 1;
+        linearDepthRelease.subresourceRange.baseArrayLayer = 0;
+        linearDepthRelease.subresourceRange.layerCount = 1;
+        releaseBarriers[releaseCount++] = linearDepthRelease;
 
         VkImageMemoryBarrier normalsRelease{};
         normalsRelease.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;

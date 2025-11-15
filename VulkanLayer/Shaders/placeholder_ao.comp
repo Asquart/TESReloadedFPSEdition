@@ -3,29 +3,38 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(binding = 0, rgba16f) uniform writeonly image2D uOutputImage;
-layout(binding = 1) uniform sampler2D uDepthTexture;
+layout(binding = 1) uniform sampler2D uLinearDepthTexture;
 layout(binding = 2) uniform sampler2D uColorTexture;
 layout(binding = 3) uniform sampler2D uNormalTexture;
 
-const vec2 kSampleKernel[12] = vec2[](
+const vec2 kSampleKernel[16] = vec2[](
     vec2(1.0, 0.0),
     vec2(-1.0, 0.0),
     vec2(0.0, 1.0),
     vec2(0.0, -1.0),
-    vec2(1.0, 1.0),
-    vec2(-1.0, 1.0),
-    vec2(1.0, -1.0),
-    vec2(-1.0, -1.0),
-    vec2(2.0, 0.5),
-    vec2(-2.0, -0.5),
-    vec2(0.5, 2.0),
-    vec2(-0.5, -2.0)
+    vec2(0.70710678, 0.70710678),
+    vec2(-0.70710678, 0.70710678),
+    vec2(0.70710678, -0.70710678),
+    vec2(-0.70710678, -0.70710678),
+    vec2(0.92387953, 0.38268343),
+    vec2(-0.92387953, 0.38268343),
+    vec2(0.38268343, 0.92387953),
+    vec2(0.38268343, -0.92387953),
+    vec2(-0.38268343, 0.92387953),
+    vec2(-0.38268343, -0.92387953),
+    vec2(0.13052619, 0.99144486),
+    vec2(-0.13052619, 0.99144486)
 );
+
+float Hash(vec2 p)
+{
+    // simple low-discrepancy hash based on screen space position
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453123);
+}
 
 vec3 DecodeNormal(vec3 encoded)
 {
-    vec3 n = normalize(encoded * 2.0 - 1.0);
-    return n;
+    return normalize(encoded * 2.0 - 1.0);
 }
 
 void main()
@@ -40,41 +49,49 @@ void main()
     vec2 resolution = vec2(dims);
     vec2 uv = (vec2(coord) + 0.5) / resolution;
 
-    vec4 baseColor = textureLod(uColorTexture, uv, 0.0);
-    float centerDepth = textureLod(uDepthTexture, uv, 0.0).r;
-    if (centerDepth <= 0.0)
+    vec3 baseColor = textureLod(uColorTexture, uv, 0.0).rgb;
+    vec2 depthSample = textureLod(uLinearDepthTexture, uv, 0.0).rg;
+    float linearDepth = depthSample.x;
+    if (linearDepth <= 0.0)
     {
-        imageStore(uOutputImage, coord, vec4(baseColor.rgb, 1.0));
+        imageStore(uOutputImage, coord, vec4(baseColor, 1.0));
         return;
     }
 
-    vec3 centerNormal = DecodeNormal(textureLod(uNormalTexture, uv, 0.0).xyz);
+    vec3 normal = DecodeNormal(textureLod(uNormalTexture, uv, 0.0).xyz);
 
-    const float radiusPixels = 6.0;
-    const float depthScale = 80.0;
-    const float bias = 0.0015;
-    const float normalWeightScale = 0.85;
-
+    float depthForRadius = clamp(linearDepth, 0.0, 1.0);
+    float radiusPixels = mix(6.0, 36.0, depthForRadius);
     vec2 pixelSize = 1.0 / resolution;
+
+    float randomAngle = Hash(vec2(coord)) * 6.2831853;
+    float s = sin(randomAngle);
+    float c = cos(randomAngle);
+    mat2 rotation = mat2(c, -s, s, c);
+
     float occlusion = 0.0;
     float weightSum = 0.0;
 
-    for (int i = 0; i < 12; ++i)
+    const float bias = 0.0025;
+    const float depthScale = 220.0;
+    const float normalInfluence = 0.75;
+
+    for (int i = 0; i < 16; ++i)
     {
-        vec2 offset = kSampleKernel[i] * radiusPixels * pixelSize;
+        float sequenceT = (float(i) + 1.0) / 16.0;
+        vec2 sampleDir = rotation * kSampleKernel[i];
+        vec2 offset = sampleDir * radiusPixels * sequenceT * pixelSize;
         vec2 sampleUv = clamp(uv + offset, vec2(0.0), vec2(1.0));
 
-        float sampleDepth = textureLod(uDepthTexture, sampleUv, 0.0).r;
+        float sampleLinearDepth = textureLod(uLinearDepthTexture, sampleUv, 0.0).x;
         vec3 sampleNormal = DecodeNormal(textureLod(uNormalTexture, sampleUv, 0.0).xyz);
 
-        float depthDifference = sampleDepth - centerDepth;
-        float depthContribution = clamp(abs(depthDifference) * depthScale - bias, 0.0, 1.5);
-        float normalSimilarity = clamp(dot(centerNormal, sampleNormal), 0.0, 1.0);
-        float normalContribution = 1.0 - pow(normalSimilarity, 2.0);
+        float depthDelta = sampleLinearDepth - linearDepth;
+        float rangeWeight = clamp((depthDelta - bias) * depthScale, 0.0, 1.0);
+        float normalWeight = clamp(1.0 - dot(normal, sampleNormal), 0.0, 1.0);
+        float distanceWeight = 1.0 - sequenceT * 0.65;
 
-        float distanceWeight = 1.0 - clamp(length(offset) * 0.5, 0.0, 1.0);
-        float contribution = depthContribution * mix(1.0, normalContribution, normalWeightScale) * distanceWeight;
-
+        float contribution = rangeWeight * mix(1.0, normalWeight, normalInfluence) * distanceWeight;
         occlusion += contribution;
         weightSum += distanceWeight;
     }
@@ -82,10 +99,10 @@ void main()
     float ao = 1.0;
     if (weightSum > 0.0)
     {
-        float normalizedOcclusion = clamp(occlusion / weightSum, 0.0, 1.5);
-        ao = clamp(1.0 - normalizedOcclusion * 0.75, 0.0, 1.0);
+        float normalizedOcclusion = occlusion / weightSum;
+        ao = clamp(1.0 - normalizedOcclusion * 1.15, 0.15, 1.0);
     }
 
-    vec3 shadedColor = baseColor.rgb * mix(1.0, ao, 0.85);
+    vec3 shadedColor = baseColor * vec3(ao);
     imageStore(uOutputImage, coord, vec4(shadedColor, 1.0));
 }

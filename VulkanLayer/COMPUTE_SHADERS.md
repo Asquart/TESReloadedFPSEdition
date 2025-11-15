@@ -16,7 +16,7 @@ The Direct3D 9 runtime publishes render targets and their Vulkan interop handles
 | ---- | ----------- | ------ | -------------- |
 | `TESR_SourceTexture` | Copy of the original post-processing input (pre-effect color) | `A16B16G16R16F` | `VkImage`, `VkImageView` (color) |
 | `TESR_RenderedTexture` | Post-processed color target used as compute output | `A16B16G16R16F` | `VkImage`, `VkImageView` (storage) |
-| `TESR_DepthTexture` | Linearized INTZ depth texture used for effects | `D24_UNORM_S8_UINT` | `VkImage`, `VkImageView` (sampled) |
+| `TESR_DepthTexture` | Primary INTZ depth texture (hardware depth range) | `D24_UNORM_S8_UINT` | `VkImage`, `VkImageView` (sampled) |
 | `TESR_MainDepthStencil` | Primary depth-stencil surface; exposed when available | `D24_UNORM_S8_UINT` | `VkImage`, `VkImageView` (sampled) |
 | `TESR_NormalsBuffer` | Screen-space normals written by the normals effect | `A16B16G16R16F` | `VkImage`, `VkImageView` (sampled) |
 | `TESR_DepthBuffer` | Combined depth buffer used by post-processing | `G32R32F` | `VkImage`, `VkImageView` (sampled) |
@@ -43,7 +43,7 @@ To export additional resources (normals, shadow maps, etc.) you can follow the s
 | Binding | Type | Contents |
 | ------- | ---- | -------- |
 | 0 | `VK_DESCRIPTOR_TYPE_STORAGE_IMAGE` | `TESR_RenderedTexture` – writable output image |
-| 1 | `VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER` | Depth texture sampler (`TESR_DepthTexture` or `TESR_MainDepthStencil`) |
+| 1 | `VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER` | Combined depth buffer (`TESR_DepthBuffer`) |
 | 2 | `VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER` | Source color buffer (`TESR_SourceTexture`) |
 | 3 | `VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER` | Screen-space normals (`TESR_NormalsBuffer`) |
 
@@ -55,7 +55,7 @@ Before dispatching compute work the Vulkan layer transitions the bound images to
 
 * Output color: `COLOR_ATTACHMENT_OPTIMAL → GENERAL`
 * Source color + normals: `COLOR_ATTACHMENT_OPTIMAL → SHADER_READ_ONLY_OPTIMAL`
-* Depth: `DEPTH_STENCIL_ATTACHMENT_OPTIMAL → SHADER_READ_ONLY_OPTIMAL`
+* Linear depth + normals: `COLOR_ATTACHMENT_OPTIMAL → SHADER_READ_ONLY_OPTIMAL`
 
 After the dispatch they are restored to their original layouts so the DXVK graphics pipeline can continue rendering without additional synchronization. If you add more bindings, remember to extend the barrier logic so every image moves to a layout that matches its descriptor type before dispatch and returns afterwards.
 
@@ -66,7 +66,7 @@ After the dispatch they are restored to their original layouts so the DXVK graph
 
   ```glsl
   layout(binding = 0, rgba16f) uniform writeonly image2D uOutputImage;
-  layout(binding = 1) uniform sampler2D uDepthTexture;
+  layout(binding = 1) uniform sampler2D uLinearDepthTexture;
   ```
 
 * Dispatch size is determined automatically (`CmdDispatch` is invoked with the render target dimensions rounded up to 8×8 work groups).
@@ -74,10 +74,10 @@ After the dispatch they are restored to their original layouts so the DXVK graph
 
 ## Accessing depth, normals, and shadows
 
-* Depth: sample the depth map via binding 1 as shown in `placeholder_ao.comp`. The depth buffer is shared as a combined image sampler. Sampling returns the hardware depth value (0–1), so any linearization must be performed in-shader if needed.
+* Depth: binding 1 exposes `TESR_DepthBuffer`, which stores the combined view-space depth (`CombineDepth.fx`) in floating point form. The X channel contains view-space depth normalized by the camera far plane, so you can compare or differentiate values without additional linearization.
 * Source color: binding 2 provides the post-effect color buffer prior to compute. Use it to combine computed lighting with the scene color.
 * Normals: binding 3 exposes `TESR_NormalsBuffer`, which stores screen-space normals encoded in the `[0,1]` range. Decode with `normal = normalize(tex * 2.0 - 1.0)` before use.
-* Additional buffers: shadow maps (`TESR_ShadowAtlas`, `TESR_OrthoMapBuffer`, `TESR_PointShadowBuffer`, `TESR_ShadowSpotlightBuffer#`), the combined depth buffer (`TESR_DepthBuffer`), and antialiasing helpers (`TESR_SMAA_Edges`, `TESR_SMAA_Blend`) are published every frame. Author shaders can look them up by name inside `TryInjectComputeWork` or extend the descriptor layout to bind more resources as needed. The bridge supports up to four handles per surface, so Direct3D pointers and Vulkan objects can be forwarded together. On the Vulkan side make sure the declared descriptor type matches the usage flags you set when registering the texture (e.g., `TR_BRIDGE_RT_USAGE_SAMPLED_BIT` → sampled image, `TR_BRIDGE_RT_USAGE_STORAGE_BIT` → storage image).
+* Additional buffers: shadow maps (`TESR_ShadowAtlas`, `TESR_OrthoMapBuffer`, `TESR_PointShadowBuffer`, `TESR_ShadowSpotlightBuffer#`), the original hardware depth map (`TESR_DepthTexture` / `TESR_MainDepthStencil`), and antialiasing helpers (`TESR_SMAA_Edges`, `TESR_SMAA_Blend`) are published every frame. Author shaders can look them up by name inside `TryInjectComputeWork` or extend the descriptor layout to bind more resources as needed. The bridge supports up to four handles per surface, so Direct3D pointers and Vulkan objects can be forwarded together. On the Vulkan side make sure the declared descriptor type matches the usage flags you set when registering the texture (e.g., `TR_BRIDGE_RT_USAGE_SAMPLED_BIT` → sampled image, `TR_BRIDGE_RT_USAGE_STORAGE_BIT` → storage image).
 
 ## Adding a new compute effect
 

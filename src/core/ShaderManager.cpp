@@ -936,11 +936,6 @@ void ShaderManager::SwitchShaderStatus(const char* Name) {
                 return;
         }
 
-        if (!strcmp(Name, "VulkanAmbientOcclusion")) {
-                bool enabled = TheSettingManager->GetMenuShaderEnabled(Name);
-                TheSettingManager->SetMenuShaderEnabled(Name, !enabled);
-        }
-
         IsMenuSwitch = false;
 }
 
