@@ -3,6 +3,8 @@
 #include "../../Shared/Bridge/Bridge.h"
 #include "../../Shared/Bridge/DXVKInterop.h"
 
+#include "TextureManager.h"
+
 namespace
 {
 void UpdateBridgeComputeToggle()
@@ -143,6 +145,8 @@ void ShaderManager::Initialize() {
         TheShaderManager->InitializeConstants();
 
         UpdateBridgeComputeToggle();
+
+        TextureManager::PublishBridgeState();
 
         timer.LogTime("ShaderManager::Initialize");
 }
@@ -924,13 +928,15 @@ void ShaderManager::SwitchShaderStatus(const char* Name) {
 
 	// shaders
 	ShaderCollection* shader = GetShaderCollectionByName(Name);
-	if (shader) {
-		bool setting = shader->SwitchShader();
-		TheSettingManager->SetMenuShaderEnabled(Name, setting);
+        if (shader) {
+                bool setting = shader->SwitchShader();
+                TheSettingManager->SetMenuShaderEnabled(Name, setting);
 
-		IsMenuSwitch = false;
-		return;
-	}
+                IsMenuSwitch = false;
+                return;
+        }
+
+        IsMenuSwitch = false;
 }
 
 void ShaderManager::SetCustomConstant(const char* Name, D3DXVECTOR4 Value) {
