@@ -41,10 +41,25 @@
     <Filter Include="NewVegas\nvse">
       <UniqueIdentifier>{3aba0770-a14b-4c4a-96eb-8afda7d52f08}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shared">
+      <UniqueIdentifier>{9126e182-b0cc-42e4-b5f3-ee3c4c13a834}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shared\Bridge">
+      <UniqueIdentifier>{4e5f4ff5-7cf2-4b98-971e-e8519292236f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
       <Filter>Main</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\Bridge\Bridge.h">
+      <Filter>Shared\Bridge</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\Bridge\BridgeExports.h">
+      <Filter>Shared\Bridge</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\Bridge\DXVKInterop.h">
+      <Filter>Shared\Bridge</Filter>
     </ClInclude>
     <ClInclude Include="..\src\core\Device\Device.h">
       <Filter>Core\Device</Filter>
@@ -315,6 +330,12 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\Shared\Bridge\Bridge.cpp">
+      <Filter>Shared\Bridge</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\Bridge\DXVKInterop.cpp">
+      <Filter>Shared\Bridge</Filter>
+    </ClCompile>
     <ClCompile Include="Main.cpp">
       <Filter>Main</Filter>
     </ClCompile>
