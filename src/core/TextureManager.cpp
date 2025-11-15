@@ -1,30 +1,358 @@
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <unordered_map>
+#include <vector>
+
+#include "../../Shared/Bridge/Bridge.h"
+#include "../../Shared/Bridge/DXVKInterop.h"
+
+namespace
+{
+TRBridgeFormat ConvertFormat(D3DFORMAT format)
+{
+        switch (format)
+        {
+        case D3DFMT_A8R8G8B8:
+                return TR_BRIDGE_FORMAT_R8G8B8A8_UNORM;
+        case D3DFMT_A16B16G16R16F:
+                return TR_BRIDGE_FORMAT_R16G16B16A16_FLOAT;
+        case D3DFMT_G32R32F:
+                return TR_BRIDGE_FORMAT_R32G32_SFLOAT;
+        case D3DFMT_R32F:
+                return TR_BRIDGE_FORMAT_R32_SFLOAT;
+        case D3DFMT_A32B32G32R32F:
+                return TR_BRIDGE_FORMAT_R32G32B32A32_FLOAT;
+        case D3DFMT_D24S8:
+                return TR_BRIDGE_FORMAT_D24_UNORM_S8_UINT;
+        default:
+                if (format == static_cast<D3DFORMAT>(MAKEFOURCC('I', 'N', 'T', 'Z')))
+                {
+                        return TR_BRIDGE_FORMAT_D24_UNORM_S8_UINT;
+                }
+                break;
+        }
+        return TR_BRIDGE_FORMAT_UNDEFINED;
+}
+
+void AppendHandle(TRBridgeInteropSurface& surface, TRBridgeInteropHandleType type, uint64_t value, uint64_t auxValue = 0)
+{
+        if (surface.handleCount >= TR_BRIDGE_MAX_INTEROP_HANDLES || value == 0)
+        {
+                return;
+        }
+
+        surface.handles[surface.handleCount].type = type;
+        surface.handles[surface.handleCount].value = value;
+        surface.handles[surface.handleCount].auxValue = auxValue;
+        ++surface.handleCount;
+}
+
+struct VulkanInteropEntry
+{
+        bool valid{false};
+        DxvkInteropSurfaceInfo info{};
+};
+
+std::unordered_map<std::string, VulkanInteropEntry> g_vulkanInteropSurfaces;
+bool g_vulkanInteropAvailable = false;
+bool g_vulkanInteropValidation = false;
+
+bool EnvironmentFlagEnabled(const char* name)
+{
+        const char* value = std::getenv(name);
+        if (!value)
+        {
+                return false;
+        }
+
+        return value[0] != '\0' && value[0] != '0' && value[0] != 'f' && value[0] != 'F' && value[0] != 'n' && value[0] != 'N';
+}
+
+void StoreInteropInfo(const char* name, const DxvkInteropSurfaceInfo& info)
+{
+        if (!name || !info.valid)
+        {
+                return;
+        }
+
+        VulkanInteropEntry entry{};
+        entry.valid = true;
+        entry.info = info;
+        g_vulkanInteropSurfaces[name] = entry;
+}
+
+const VulkanInteropEntry* FindInteropInfo(const char* name)
+{
+        if (!name)
+        {
+                return nullptr;
+        }
+
+        auto it = g_vulkanInteropSurfaces.find(name);
+        if (it == g_vulkanInteropSurfaces.end() || !it->second.valid)
+        {
+                return nullptr;
+        }
+
+        return &it->second;
+}
+
+void RegisterTextureInterop(IDirect3DDevice9* device, const char* name, IDirect3DTexture9* texture, uint32_t usageFlags)
+{
+        if (!g_vulkanInteropAvailable || !device || !name || !texture)
+        {
+                return;
+        }
+
+        DxvkInteropSurfaceInfo info{};
+        if (!DxvkInterop_GetSurfaceInfo(texture, &info) || !info.valid)
+        {
+                D3DSURFACE_DESC desc;
+                if (FAILED(texture->GetLevelDesc(0, &desc)))
+                {
+                        return;
+                }
+
+                DxvkInteropSurfaceCreateInfo createInfo{};
+                createInfo.width = desc.Width;
+                createInfo.height = desc.Height;
+                createInfo.mipLevels = texture->GetLevelCount();
+                createInfo.arrayLayers = 1;
+                createInfo.format = static_cast<uint32_t>(desc.Format);
+                createInfo.usageFlags = usageFlags;
+                createInfo.sampleCount = 1;
+
+                if (!DxvkInterop_CreateSiblingSurface(device, &createInfo, &info) || !info.valid)
+                {
+                        return;
+                }
+        }
+
+        if (info.rowPitch == 0)
+        {
+                D3DLOCKED_RECT lockedRect;
+                if (SUCCEEDED(texture->LockRect(0, &lockedRect, NULL, D3DLOCK_READONLY)))
+                {
+                        info.rowPitch = static_cast<uint32_t>(lockedRect.Pitch);
+                        texture->UnlockRect(0);
+                }
+        }
+
+        StoreInteropInfo(name, info);
+}
+
+void ValidateInteropSurface(const char* name, IDirect3DSurface9* surface, const DxvkInteropSurfaceInfo& info)
+{
+        if (!g_vulkanInteropValidation || !surface || !info.valid)
+        {
+                return;
+        }
+
+        if (DxvkInterop_DebugDownload(surface, &info))
+        {
+                Logger::Log("[TESR][Interop] Validated Vulkan surface %s via CPU readback", name);
+        }
+        else
+        {
+                Logger::Log("[TESR][Interop] Failed to validate Vulkan surface %s via CPU readback", name);
+        }
+}
+}
 
 
 void TextureManager::Initialize() {
 
-	Logger::Log("Starting the textures manager...");
-	auto timer = TimeLogger();
-	
-	TheTextureManager = new TextureManager();
+        Logger::Log("Starting the textures manager...");
+        auto timer = TimeLogger();
 
-	IDirect3DDevice9* Device = TheRenderManager->device;
-	UInt32 Width = TheRenderManager->width;
-	UInt32 Height = TheRenderManager->height;
-	
-	// create textures used by NVR and bind them to surfaces
-	TheTextureManager->InitTexture("TESR_SourceBuffer", &TheTextureManager->SourceTexture, &TheTextureManager->SourceSurface, Width, Height, D3DFMT_A16B16G16R16F);
-	TheTextureManager->InitTexture("TESR_RenderedBuffer", &TheTextureManager->RenderedTexture, &TheTextureManager->RenderedSurface, Width, Height, D3DFMT_A16B16G16R16F);
+        TheTextureManager = new TextureManager();
 
-	Device->CreateTexture(Width, Height, 1, D3DUSAGE_DEPTHSTENCIL, (D3DFORMAT)MAKEFOURCC('I', 'N', 'T', 'Z'), D3DPOOL_DEFAULT, &TheTextureManager->DepthTexture, NULL);
-	TheTextureManager->RegisterTexture("TESR_DepthBufferWorld",(IDirect3DBaseTexture9**)&TheTextureManager->DepthTexture);
-	Device->CreateTexture(Width, Height, 1, D3DUSAGE_DEPTHSTENCIL, (D3DFORMAT)MAKEFOURCC('I', 'N', 'T', 'Z'), D3DPOOL_DEFAULT, &TheTextureManager->DepthTextureViewModel, NULL);
-	TheTextureManager->RegisterTexture("TESR_DepthBufferViewModel",(IDirect3DBaseTexture9**)&TheTextureManager->DepthTextureViewModel);
+        IDirect3DDevice9* Device = TheRenderManager->device;
+        UInt32 Width = TheRenderManager->width;
+        UInt32 Height = TheRenderManager->height;
 
-	TheTextureManager->RegisterTexture(WordWaterHeightMapBuffer, &TheTextureManager->WaterHeightMapB);
-	TheTextureManager->RegisterTexture(WordWaterReflectionMapBuffer, &TheTextureManager->WaterReflectionMapB);
+        TRBridge_Initialize();
 
-	timer.LogTime("TextureManager::Initialize");
+        g_vulkanInteropSurfaces.clear();
+        g_vulkanInteropAvailable = false;
+        g_vulkanInteropValidation = false;
+
+        if (EnvironmentFlagEnabled("TESR_ENABLE_VK_INTEROP"))
+        {
+                if (DxvkInterop_Initialize(Device) && DxvkInterop_IsAvailable())
+                {
+                        g_vulkanInteropAvailable = true;
+                        g_vulkanInteropValidation = EnvironmentFlagEnabled("TESR_VALIDATE_VK_INTEROP");
+                        Logger::Log("[TESR][Interop] Vulkan interop enabled%s", g_vulkanInteropValidation ? " with validation" : "");
+                }
+                else
+                {
+                        Logger::Log("[TESR][Interop] Vulkan interop requested but unavailable");
+                }
+        }
+        else
+        {
+                Logger::Log("[TESR][Interop] Vulkan interop disabled (TESR_ENABLE_VK_INTEROP not set)");
+        }
+
+        // create textures used by NVR and bind them to surfaces
+        TheTextureManager->InitTexture("TESR_SourceBuffer", &TheTextureManager->SourceTexture, &TheTextureManager->SourceSurface, Width, Height, D3DFMT_A16B16G16R16F);
+        TheTextureManager->InitTexture("TESR_RenderedBuffer", &TheTextureManager->RenderedTexture, &TheTextureManager->RenderedSurface, Width, Height, D3DFMT_A16B16G16R16F);
+
+        Device->CreateTexture(Width, Height, 1, D3DUSAGE_DEPTHSTENCIL, (D3DFORMAT)MAKEFOURCC('I', 'N', 'T', 'Z'), D3DPOOL_DEFAULT, &TheTextureManager->DepthTexture, NULL);
+        TheTextureManager->RegisterTexture("TESR_DepthBufferWorld",(IDirect3DBaseTexture9**)&TheTextureManager->DepthTexture);
+        if (TheTextureManager->DepthTexture)
+                TheTextureManager->DepthTexture->GetSurfaceLevel(0, &TheTextureManager->DepthSurface);
+        Device->CreateTexture(Width, Height, 1, D3DUSAGE_DEPTHSTENCIL, (D3DFORMAT)MAKEFOURCC('I', 'N', 'T', 'Z'), D3DPOOL_DEFAULT, &TheTextureManager->DepthTextureViewModel, NULL);
+        TheTextureManager->RegisterTexture("TESR_DepthBufferViewModel",(IDirect3DBaseTexture9**)&TheTextureManager->DepthTextureViewModel);
+
+        TheTextureManager->RegisterTexture(WordWaterHeightMapBuffer, &TheTextureManager->WaterHeightMapB);
+        TheTextureManager->RegisterTexture(WordWaterReflectionMapBuffer, &TheTextureManager->WaterReflectionMapB);
+
+        if (g_vulkanInteropAvailable)
+        {
+                RegisterTextureInterop(Device, "TESR_SourceTexture", TheTextureManager->SourceTexture, TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+                RegisterTextureInterop(Device, "TESR_RenderedTexture", TheTextureManager->RenderedTexture, TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+                RegisterTextureInterop(Device, "TESR_DepthTexture", TheTextureManager->DepthTexture, TR_BRIDGE_RT_USAGE_DEPTH_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+
+                if (const VulkanInteropEntry* depthEntry = FindInteropInfo("TESR_DepthTexture"))
+                {
+                        StoreInteropInfo("TESR_MainDepthStencil", depthEntry->info);
+                }
+
+                if (const VulkanInteropEntry* sourceEntry = FindInteropInfo("TESR_SourceTexture"))
+                {
+                        ValidateInteropSurface("TESR_SourceTexture", TheTextureManager->SourceSurface, sourceEntry->info);
+                }
+                if (const VulkanInteropEntry* renderedEntry = FindInteropInfo("TESR_RenderedTexture"))
+                {
+                        ValidateInteropSurface("TESR_RenderedTexture", TheTextureManager->RenderedSurface, renderedEntry->info);
+                }
+                if (TheTextureManager->DepthSurface)
+                {
+                        if (const VulkanInteropEntry* depthEntry = FindInteropInfo("TESR_DepthTexture"))
+                        {
+                                ValidateInteropSurface("TESR_DepthTexture", TheTextureManager->DepthSurface, depthEntry->info);
+                        }
+                }
+        }
+
+        timer.LogTime("TextureManager::Initialize");
+
+        PublishBridgeState();
+}
+
+void TextureManager::PublishBridgeState() {
+
+        if (!TheTextureManager)
+                return;
+
+        std::vector<TRBridgeRenderTargetDescriptor> descriptors;
+        std::vector<TRBridgeInteropSurface> interops;
+
+        auto appendTexture = [&](const char* name, IDirect3DTexture9* texture, IDirect3DSurface9* surface, uint32_t usageFlags) {
+                if (!texture)
+                        return;
+
+                D3DSURFACE_DESC desc;
+                if (FAILED(texture->GetLevelDesc(0, &desc)))
+                        return;
+
+                TRBridgeRenderTargetDescriptor descriptor{};
+                std::strncpy(descriptor.name, name, sizeof(descriptor.name) - 1);
+                descriptor.name[sizeof(descriptor.name) - 1] = '\0';
+                descriptor.width = desc.Width;
+                descriptor.height = desc.Height;
+                descriptor.mipLevels = texture->GetLevelCount();
+                descriptor.arrayLayers = 1;
+                descriptor.format = ConvertFormat(desc.Format);
+                descriptor.usageFlags = usageFlags;
+                descriptors.push_back(descriptor);
+
+                TRBridgeInteropSurface interopSurface{};
+                interopSurface.descriptor = descriptor;
+                interopSurface.handleCount = 0;
+
+                AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_D3D9_TEXTURE_POINTER, reinterpret_cast<uint64_t>(texture));
+                if (surface)
+                        AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_D3D9_SURFACE_POINTER, reinterpret_cast<uint64_t>(surface));
+
+                if (const VulkanInteropEntry* interopEntry = FindInteropInfo(name))
+                {
+                        const DxvkInteropSurfaceInfo& info = interopEntry->info;
+                        if (info.image)
+                                AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE, info.image);
+                        if (info.imageView)
+                                AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW, info.imageView);
+                        if (info.memory)
+                                AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_VK_DEVICE_MEMORY, info.memory);
+                        if (info.externalMemory.win32Handle)
+                                AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_WIN32_SHARED_HANDLE, info.externalMemory.win32Handle);
+                        if (info.externalMemory.opaqueFd >= 0)
+                                AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_OPAQUE_FD, static_cast<uint64_t>(static_cast<int64_t>(info.externalMemory.opaqueFd)));
+                        if (info.rowPitch)
+                                interopSurface.rowPitch = info.rowPitch;
+                        if (info.depthPitch)
+                                interopSurface.depthPitch = info.depthPitch;
+                }
+
+                interops.push_back(interopSurface);
+        };
+
+        appendTexture("TESR_SourceTexture", TheTextureManager->SourceTexture, TheTextureManager->SourceSurface, TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+        appendTexture("TESR_RenderedTexture", TheTextureManager->RenderedTexture, TheTextureManager->RenderedSurface, TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+        appendTexture("TESR_DepthTexture", TheTextureManager->DepthTexture, TheTextureManager->DepthSurface, TR_BRIDGE_RT_USAGE_DEPTH_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+
+        if (TheTextureManager->DepthSurface)
+        {
+                D3DSURFACE_DESC desc;
+                if (SUCCEEDED(TheTextureManager->DepthSurface->GetDesc(&desc)))
+                {
+                        TRBridgeRenderTargetDescriptor descriptor{};
+                        std::strncpy(descriptor.name, "TESR_MainDepthStencil", sizeof(descriptor.name) - 1);
+                        descriptor.name[sizeof(descriptor.name) - 1] = '\0';
+                        descriptor.width = desc.Width;
+                        descriptor.height = desc.Height;
+                        descriptor.mipLevels = 1;
+                        descriptor.arrayLayers = 1;
+                        descriptor.format = ConvertFormat(desc.Format);
+                        if (descriptor.format == TR_BRIDGE_FORMAT_UNDEFINED)
+                                descriptor.format = TR_BRIDGE_FORMAT_D24_UNORM_S8_UINT;
+                        descriptor.usageFlags = TR_BRIDGE_RT_USAGE_DEPTH_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT;
+                        descriptors.push_back(descriptor);
+
+                        TRBridgeInteropSurface interopSurface{};
+                        interopSurface.descriptor = descriptor;
+                        interopSurface.handleCount = 0;
+                        AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_D3D9_SURFACE_POINTER, reinterpret_cast<uint64_t>(TheTextureManager->DepthSurface));
+
+                        if (const VulkanInteropEntry* interopEntry = FindInteropInfo("TESR_MainDepthStencil"))
+                        {
+                                const DxvkInteropSurfaceInfo& info = interopEntry->info;
+                                if (info.image)
+                                        AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE, info.image);
+                                if (info.imageView)
+                                        AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW, info.imageView);
+                                if (info.memory)
+                                        AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_VK_DEVICE_MEMORY, info.memory);
+                                if (info.externalMemory.win32Handle)
+                                        AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_WIN32_SHARED_HANDLE, info.externalMemory.win32Handle);
+                                if (info.externalMemory.opaqueFd >= 0)
+                                        AppendHandle(interopSurface, TR_BRIDGE_INTEROP_HANDLE_OPAQUE_FD, static_cast<uint64_t>(static_cast<int64_t>(info.externalMemory.opaqueFd)));
+                                if (info.rowPitch)
+                                        interopSurface.rowPitch = info.rowPitch;
+                                if (info.depthPitch)
+                                        interopSurface.depthPitch = info.depthPitch;
+                        }
+
+                        interops.push_back(interopSurface);
+                }
+        }
+
+        TRBridge_SetRenderTargets(descriptors.empty() ? nullptr : descriptors.data(), descriptors.size());
+        TRBridge_SetInteropSurfaces(interops.empty() ? nullptr : interops.data(), interops.size());
 }
 
 /*

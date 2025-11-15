@@ -362,6 +362,7 @@ void RenderManager::ResolveDepthBuffer(IDirect3DTexture9* Buffer) {
 			else {
 				NvAPI_D3D9_RegisterResource(TheTextureManager->DepthSurface);
 			}
+			TextureManager::PublishBridgeState();
 		}
 
 		NvAPI_D3D9_RegisterResource(Buffer);

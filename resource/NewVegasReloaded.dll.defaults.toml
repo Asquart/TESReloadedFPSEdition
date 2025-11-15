@@ -141,6 +141,9 @@ StrengthMultiplier = 1.0                # Global AO strength/darkness multiplier
 [_Shaders.AmbientOcclusion.Status]
 Enabled = true                          # Shadows based on object proximity/creases for more realistic light contribution.
 
+[_Shaders.VulkanAmbientOcclusion.Status]
+Enabled = false                         # Enables the Vulkan ambient occlusion compute path (requires Vulkan layer).
+
 [_Shaders.Blood.Status]
 Enabled = false                         # Not currently used
 
