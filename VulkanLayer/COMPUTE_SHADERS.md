@@ -6,6 +6,7 @@ This fork exposes a Vulkan-based compute stage that can run after the DXVK graph
 
 * The runtime configuration is exposed through `TRBridgeConfiguration` (`Shared/Bridge/Bridge.h`). The flag `TR_BRIDGE_FLAG_ENABLE_VULKAN_AO` toggles the compute stage.
 * The UI toggle in the in-game menu is handled by `ShaderManager::SwitchShaderStatus` and `SettingManager::SetMenuShaderEnabled`. Toggling **Vulkan Ambient Occlusion** updates the shared configuration, which is consumed every frame by the Vulkan layer (`TryInjectComputeWork`).
+* DXVK interop is now initialized automatically during `TextureManager::Initialize`, so the Vulkan handles for each registered render target are available without any extra configuration. Set the optional environment variable `TESR_DISABLE_VK_INTEROP=1` if you need to fall back to the legacy behaviour, or `TESR_VALIDATE_VK_INTEROP=1` to enable the expensive CPU-side validation path while debugging.
 * When compute is disabled the bridge still tracks render targets, but the layer exits early without submitting work.
 
 ## Render targets that are available to compute shaders

@@ -214,22 +214,22 @@ void TextureManager::Initialize() {
                 g_bridgeRenderTargets.clear();
         }
 
-        if (EnvironmentFlagEnabled("TESR_ENABLE_VK_INTEROP"))
+        const bool interopDisabled = EnvironmentFlagEnabled("TESR_DISABLE_VK_INTEROP");
+        g_vulkanInteropValidation = EnvironmentFlagEnabled("TESR_VALIDATE_VK_INTEROP");
+
+        if (interopDisabled)
         {
-                if (DxvkInterop_Initialize(Device) && DxvkInterop_IsAvailable())
-                {
-                        g_vulkanInteropAvailable = true;
-                        g_vulkanInteropValidation = EnvironmentFlagEnabled("TESR_VALIDATE_VK_INTEROP");
-                        Logger::Log("[TESR][Interop] Vulkan interop enabled%s", g_vulkanInteropValidation ? " with validation" : "");
-                }
-                else
-                {
-                        Logger::Log("[TESR][Interop] Vulkan interop requested but unavailable");
-                }
+                Logger::Log("[TESR][Interop] Vulkan interop disabled via TESR_DISABLE_VK_INTEROP");
+        }
+        else if (DxvkInterop_Initialize(Device) && DxvkInterop_IsAvailable())
+        {
+                g_vulkanInteropAvailable = true;
+                Logger::Log("[TESR][Interop] Vulkan interop enabled%s", g_vulkanInteropValidation ? " with validation" : "");
         }
         else
         {
-                Logger::Log("[TESR][Interop] Vulkan interop disabled (TESR_ENABLE_VK_INTEROP not set)");
+                g_vulkanInteropValidation = false;
+                Logger::Log("[TESR][Interop] Vulkan interop unavailable; compute effects disabled");
         }
 
         // create textures used by NVR and bind them to surfaces
