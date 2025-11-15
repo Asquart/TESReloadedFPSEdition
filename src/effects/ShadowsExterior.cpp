@@ -1,5 +1,8 @@
 #include "ShadowsExterior.h"
 
+#include "../../Shared/Bridge/Bridge.h"
+#include "../core/TextureManager.h"
+
 void ShadowsExteriorEffect::UpdateConstants() {
 
 	Constants.ShadowFade.x = 0; // Fade 1.0 == no shadows
@@ -361,7 +364,11 @@ void ShadowsExteriorEffect::RegisterTextures() {
 	ULONG ShadowCubeMapSize = Settings.Interiors.ShadowCubeMapSize;
 	ULONG ShadowAtlasSize = ShadowMapSize * 2;
 
-	TheTextureManager->InitTexture("TESR_ShadowAtlas", &ShadowAtlasTexture, &ShadowAtlasSurface, ShadowAtlasSize, ShadowAtlasSize, Settings.ShadowMaps.Format, Settings.ShadowMaps.Mipmaps);
+        TheTextureManager->InitTexture("TESR_ShadowAtlas", &ShadowAtlasTexture, &ShadowAtlasSurface, ShadowAtlasSize, ShadowAtlasSize, Settings.ShadowMaps.Format, Settings.ShadowMaps.Mipmaps);
+        TextureManager::RegisterBridgeRenderTarget("TESR_ShadowAtlas",
+                &ShadowAtlasTexture,
+                &ShadowAtlasSurface,
+                TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
 
 	if (!Settings.ShadowMaps.MSAA)
 		TheRenderManager->device->CreateDepthStencilSurface(ShadowAtlasSize, ShadowAtlasSize, D3DFMT_D24S8, D3DMULTISAMPLE_NONE, 0, true, &ShadowAtlasDepthSurface, NULL);
@@ -381,7 +388,11 @@ void ShadowsExteriorEffect::RegisterTextures() {
 
 	// ortho texture
 	ULONG orthoMapRes = Settings.OrthoMap.Resolution;
-	TheTextureManager->InitTexture("TESR_OrthoMapBuffer", &ShadowMapOrthoTexture, &ShadowMapOrthoSurface, orthoMapRes, orthoMapRes, D3DFMT_R32F);
+        TheTextureManager->InitTexture("TESR_OrthoMapBuffer", &ShadowMapOrthoTexture, &ShadowMapOrthoSurface, orthoMapRes, orthoMapRes, D3DFMT_R32F);
+        TextureManager::RegisterBridgeRenderTarget("TESR_OrthoMapBuffer",
+                &ShadowMapOrthoTexture,
+                &ShadowMapOrthoSurface,
+                TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
 	TheRenderManager->device->CreateDepthStencilSurface(orthoMapRes, orthoMapRes, D3DFMT_D24S8, D3DMULTISAMPLE_NONE, 0, true, &ShadowMapOrthoDepthSurface, NULL);
 	ShadowMaps[MapOrtho].ShadowMapViewPort = { 0, 0, orthoMapRes, orthoMapRes, 0.0f, 1.0f };
 	ShadowMaps[MapOrtho].ShadowMapResolution = (float)orthoMapRes;
@@ -390,8 +401,12 @@ void ShadowsExteriorEffect::RegisterTextures() {
 
 	// initialize spot lights maps
 	for (int i = 0; i < SpotLightsMax; i++) {
-		std::string textureName = "TESR_ShadowSpotlightBuffer" + std::to_string(i);
-		TheTextureManager->InitTexture(textureName.c_str(), &Textures.ShadowSpotlightTexture[i], &Textures.ShadowSpotlightSurface[i], ShadowCubeMapSize, ShadowCubeMapSize, D3DFMT_R32F);
+                std::string textureName = "TESR_ShadowSpotlightBuffer" + std::to_string(i);
+                TheTextureManager->InitTexture(textureName.c_str(), &Textures.ShadowSpotlightTexture[i], &Textures.ShadowSpotlightSurface[i], ShadowCubeMapSize, ShadowCubeMapSize, D3DFMT_R32F);
+                TextureManager::RegisterBridgeRenderTarget(textureName.c_str(),
+                        &Textures.ShadowSpotlightTexture[i],
+                        &Textures.ShadowSpotlightSurface[i],
+                        TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
 	}
 
 
@@ -411,7 +426,13 @@ void ShadowsExteriorEffect::RegisterTextures() {
 	//memset(TheShadowManager->ShadowCubeMapLights, NULL, sizeof(ShadowCubeMapLights));
 
 	// Initialize shadow buffer
-	TheTextureManager->InitTexture("TESR_PointShadowBuffer", &Textures.ShadowPassTexture, &Textures.ShadowPassSurface, TheRenderManager->width, TheRenderManager->height, D3DFMT_G16R16);
+        TheTextureManager->InitTexture("TESR_PointShadowBuffer", &Textures.ShadowPassTexture, &Textures.ShadowPassSurface, TheRenderManager->width, TheRenderManager->height, D3DFMT_G16R16);
+        TextureManager::RegisterBridgeRenderTarget("TESR_PointShadowBuffer",
+                &Textures.ShadowPassTexture,
+                &Textures.ShadowPassSurface,
+                TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+
+        TextureManager::PublishBridgeState();
 
 	texturesInitialized = true;
 }
@@ -491,7 +512,9 @@ void ShadowsExteriorEffect::RecreateTextures(bool cascades, bool ortho, bool cub
 	}
 
 	// Reset shadow manager frame counter.
-	TheShadowManager->FrameCounter = 0;
+        TheShadowManager->FrameCounter = 0;
+
+        TextureManager::PublishBridgeState();
 }
 
 

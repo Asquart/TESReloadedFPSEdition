@@ -885,7 +885,7 @@ bool EnsureDeviceComputePipeline(VkDevice device,
         return false;
     }
 
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+    std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     bindings[0].descriptorCount = 1;
@@ -895,6 +895,16 @@ bool EnsureDeviceComputePipeline(VkDevice device,
     bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     bindings[1].descriptorCount = 1;
     bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    bindings[2].binding = 2;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[2].descriptorCount = 1;
+    bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    bindings[3].binding = 3;
+    bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[3].descriptorCount = 1;
+    bindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -986,7 +996,7 @@ bool EnsureDeviceComputePipeline(VkDevice device,
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     poolSizes[0].descriptorCount = 1;
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = 1;
+    poolSizes[1].descriptorCount = 3;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1356,13 +1366,25 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         return false;
     }
 
+    const TRBridgeInteropSurface* sourceSurface = nullptr;
     const TRBridgeInteropSurface* depthSurface = nullptr;
+    const TRBridgeInteropSurface* normalsSurface = nullptr;
     for (const auto& surface : frame.surfaces)
     {
-        if (std::strncmp(surface.descriptor.name, "TESR_DepthTexture", sizeof(surface.descriptor.name)) == 0)
+        if (!sourceSurface &&
+            std::strncmp(surface.descriptor.name, "TESR_SourceTexture", sizeof(surface.descriptor.name)) == 0)
+        {
+            sourceSurface = &surface;
+        }
+        if (!depthSurface &&
+            std::strncmp(surface.descriptor.name, "TESR_DepthTexture", sizeof(surface.descriptor.name)) == 0)
         {
             depthSurface = &surface;
-            break;
+        }
+        if (!normalsSurface &&
+            std::strncmp(surface.descriptor.name, "TESR_NormalsBuffer", sizeof(surface.descriptor.name)) == 0)
+        {
+            normalsSurface = &surface;
         }
     }
 
@@ -1378,9 +1400,48 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         }
     }
 
+    if (!sourceSurface)
+    {
+        Log("[TESR][Layer] No source surface available for frame %" PRIu64,
+            static_cast<std::uint64_t>(frame.inputs.frameId));
+        DropPendingFrame(frame.inputs.frameId);
+        return false;
+    }
+
     if (!depthSurface)
     {
         Log("[TESR][Layer] No depth surface available for frame %" PRIu64,
+            static_cast<std::uint64_t>(frame.inputs.frameId));
+        DropPendingFrame(frame.inputs.frameId);
+        return false;
+    }
+
+    if (!normalsSurface)
+    {
+        Log("[TESR][Layer] No normals surface available for frame %" PRIu64,
+            static_cast<std::uint64_t>(frame.inputs.frameId));
+        DropPendingFrame(frame.inputs.frameId);
+        return false;
+    }
+
+    VkImage sourceImage = VK_NULL_HANDLE;
+    VkImageView sourceView = VK_NULL_HANDLE;
+    for (uint32_t i = 0; i < sourceSurface->handleCount; ++i)
+    {
+        const auto& handle = sourceSurface->handles[i];
+        if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE)
+        {
+            sourceImage = reinterpret_cast<VkImage>(handle.value);
+        }
+        else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW)
+        {
+            sourceView = reinterpret_cast<VkImageView>(handle.value);
+        }
+    }
+
+    if (sourceImage == VK_NULL_HANDLE || sourceView == VK_NULL_HANDLE)
+    {
+        Log("[TESR][Layer] Missing Vulkan handles for source texture in frame %" PRIu64,
             static_cast<std::uint64_t>(frame.inputs.frameId));
         DropPendingFrame(frame.inputs.frameId);
         return false;
@@ -1404,6 +1465,29 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
     if (depthImage == VK_NULL_HANDLE || depthView == VK_NULL_HANDLE)
     {
         Log("[TESR][Layer] Missing Vulkan handles for depth texture in frame %" PRIu64,
+            static_cast<std::uint64_t>(frame.inputs.frameId));
+        DropPendingFrame(frame.inputs.frameId);
+        return false;
+    }
+
+    VkImage normalsImage = VK_NULL_HANDLE;
+    VkImageView normalsView = VK_NULL_HANDLE;
+    for (uint32_t i = 0; i < normalsSurface->handleCount; ++i)
+    {
+        const auto& handle = normalsSurface->handles[i];
+        if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE)
+        {
+            normalsImage = reinterpret_cast<VkImage>(handle.value);
+        }
+        else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW)
+        {
+            normalsView = reinterpret_cast<VkImageView>(handle.value);
+        }
+    }
+
+    if (normalsImage == VK_NULL_HANDLE || normalsView == VK_NULL_HANDLE)
+    {
+        Log("[TESR][Layer] Missing Vulkan handles for normals texture in frame %" PRIu64,
             static_cast<std::uint64_t>(frame.inputs.frameId));
         DropPendingFrame(frame.inputs.frameId);
         return false;
@@ -1459,7 +1543,17 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         depthInfo.imageView = depthView;
         depthInfo.sampler = deviceState->sampler;
 
-        std::array<VkWriteDescriptorSet, 2> writes{};
+        VkDescriptorImageInfo sourceInfo{};
+        sourceInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        sourceInfo.imageView = sourceView;
+        sourceInfo.sampler = deviceState->sampler;
+
+        VkDescriptorImageInfo normalsInfo{};
+        normalsInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        normalsInfo.imageView = normalsView;
+        normalsInfo.sampler = deviceState->sampler;
+
+        std::array<VkWriteDescriptorSet, 4> writes{};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[0].dstSet = deviceState->descriptorSet;
         writes[0].dstBinding = 0;
@@ -1473,6 +1567,20 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         writes[1].descriptorCount = 1;
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[1].pImageInfo = &depthInfo;
+
+        writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[2].dstSet = deviceState->descriptorSet;
+        writes[2].dstBinding = 2;
+        writes[2].descriptorCount = 1;
+        writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[2].pImageInfo = &sourceInfo;
+
+        writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[3].dstSet = deviceState->descriptorSet;
+        writes[3].dstBinding = 3;
+        writes[3].descriptorCount = 1;
+        writes[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[3].pImageInfo = &normalsInfo;
 
         dispatch.UpdateDescriptorSets(queueInfo.device,
                                       static_cast<uint32_t>(writes.size()),
@@ -1493,7 +1601,7 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
             return false;
         }
 
-        std::array<VkImageMemoryBarrier, 2> acquireBarriers{};
+        std::array<VkImageMemoryBarrier, 4> acquireBarriers{};
         uint32_t acquireCount = 0;
 
         VkImageMemoryBarrier outputAcquire{};
@@ -1514,6 +1622,22 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
 
         VkPipelineStageFlags acquireSrcStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
+        VkImageMemoryBarrier sourceAcquire{};
+        sourceAcquire.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        sourceAcquire.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        sourceAcquire.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceAcquire.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        sourceAcquire.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        sourceAcquire.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceAcquire.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceAcquire.image = sourceImage;
+        sourceAcquire.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        sourceAcquire.subresourceRange.baseMipLevel = 0;
+        sourceAcquire.subresourceRange.levelCount = 1;
+        sourceAcquire.subresourceRange.baseArrayLayer = 0;
+        sourceAcquire.subresourceRange.layerCount = 1;
+        acquireBarriers[acquireCount++] = sourceAcquire;
+
         VkImageMemoryBarrier depthAcquire{};
         if (depthImage != VK_NULL_HANDLE)
         {
@@ -1533,6 +1657,22 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
             acquireBarriers[acquireCount++] = depthAcquire;
             acquireSrcStages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
         }
+
+        VkImageMemoryBarrier normalsAcquire{};
+        normalsAcquire.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        normalsAcquire.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        normalsAcquire.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        normalsAcquire.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        normalsAcquire.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        normalsAcquire.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        normalsAcquire.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        normalsAcquire.image = normalsImage;
+        normalsAcquire.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        normalsAcquire.subresourceRange.baseMipLevel = 0;
+        normalsAcquire.subresourceRange.levelCount = 1;
+        normalsAcquire.subresourceRange.baseArrayLayer = 0;
+        normalsAcquire.subresourceRange.layerCount = 1;
+        acquireBarriers[acquireCount++] = normalsAcquire;
 
         dispatch.CmdPipelineBarrier(state->commandBuffer,
                                     acquireSrcStages,
@@ -1557,7 +1697,7 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         const uint32_t groupSizeY = (height + 7u) / 8u;
         dispatch.CmdDispatch(state->commandBuffer, groupSizeX == 0 ? 1 : groupSizeX, groupSizeY == 0 ? 1 : groupSizeY, 1);
 
-        std::array<VkImageMemoryBarrier, 2> releaseBarriers{};
+        std::array<VkImageMemoryBarrier, 4> releaseBarriers{};
         uint32_t releaseCount = 0;
 
         VkImageMemoryBarrier outputRelease{};
@@ -1578,6 +1718,22 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
 
         VkPipelineStageFlags releaseDstStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
+        VkImageMemoryBarrier sourceRelease{};
+        sourceRelease.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        sourceRelease.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceRelease.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        sourceRelease.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        sourceRelease.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        sourceRelease.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceRelease.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        sourceRelease.image = sourceImage;
+        sourceRelease.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        sourceRelease.subresourceRange.baseMipLevel = 0;
+        sourceRelease.subresourceRange.levelCount = 1;
+        sourceRelease.subresourceRange.baseArrayLayer = 0;
+        sourceRelease.subresourceRange.layerCount = 1;
+        releaseBarriers[releaseCount++] = sourceRelease;
+
         VkImageMemoryBarrier depthRelease{};
         if (depthImage != VK_NULL_HANDLE)
         {
@@ -1597,6 +1753,22 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
             releaseBarriers[releaseCount++] = depthRelease;
             releaseDstStages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
         }
+
+        VkImageMemoryBarrier normalsRelease{};
+        normalsRelease.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        normalsRelease.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        normalsRelease.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        normalsRelease.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        normalsRelease.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        normalsRelease.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        normalsRelease.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        normalsRelease.image = normalsImage;
+        normalsRelease.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        normalsRelease.subresourceRange.baseMipLevel = 0;
+        normalsRelease.subresourceRange.levelCount = 1;
+        normalsRelease.subresourceRange.baseArrayLayer = 0;
+        normalsRelease.subresourceRange.layerCount = 1;
+        releaseBarriers[releaseCount++] = normalsRelease;
 
         dispatch.CmdPipelineBarrier(state->commandBuffer,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,

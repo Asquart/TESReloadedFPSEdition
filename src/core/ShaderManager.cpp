@@ -3,6 +3,8 @@
 #include "../../Shared/Bridge/Bridge.h"
 #include "../../Shared/Bridge/DXVKInterop.h"
 
+#include "TextureManager.h"
+
 namespace
 {
 void UpdateBridgeComputeToggle()
@@ -143,6 +145,8 @@ void ShaderManager::Initialize() {
         TheShaderManager->InitializeConstants();
 
         UpdateBridgeComputeToggle();
+
+        TextureManager::PublishBridgeState();
 
         timer.LogTime("ShaderManager::Initialize");
 }
