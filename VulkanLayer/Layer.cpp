@@ -107,6 +107,8 @@ struct DeviceDispatch
     PFN_vkAllocateDescriptorSets AllocateDescriptorSets = nullptr;
     PFN_vkFreeDescriptorSets FreeDescriptorSets = nullptr;
     PFN_vkUpdateDescriptorSets UpdateDescriptorSets = nullptr;
+    PFN_vkCreateSampler CreateSampler = nullptr;
+    PFN_vkDestroySampler DestroySampler = nullptr;
     PFN_vkCmdBindPipeline CmdBindPipeline = nullptr;
     PFN_vkCmdBindDescriptorSets CmdBindDescriptorSets = nullptr;
     PFN_vkCmdDispatch CmdDispatch = nullptr;
@@ -120,7 +122,8 @@ struct DeviceDispatch
                WaitForFences && ResetFences && CreateShaderModule && DestroyShaderModule &&
                CreateDescriptorSetLayout && DestroyDescriptorSetLayout && CreatePipelineLayout &&
                DestroyPipelineLayout && CreateComputePipelines && DestroyPipeline && CreateDescriptorPool &&
-               DestroyDescriptorPool && AllocateDescriptorSets && UpdateDescriptorSets && CmdBindPipeline &&
+               DestroyDescriptorPool && AllocateDescriptorSets && UpdateDescriptorSets && CreateSampler &&
+               DestroySampler && CmdBindPipeline &&
                CmdBindDescriptorSets && CmdDispatch && CmdPipelineBarrier;
     }
 };
@@ -155,6 +158,7 @@ struct DeviceComputeState
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    VkSampler sampler = VK_NULL_HANDLE;
 };
 
 struct ShaderCompilerContext
@@ -774,6 +778,15 @@ void DestroyDeviceComputeState(VkDevice device, DeviceDispatch& dispatch, const 
         state->pipeline = VK_NULL_HANDLE;
     }
 
+    if (state->sampler != VK_NULL_HANDLE)
+    {
+        if (dispatch.DestroySampler)
+        {
+            dispatch.DestroySampler(device, state->sampler, nullptr);
+        }
+        state->sampler = VK_NULL_HANDLE;
+    }
+
     if (state->pipelineLayout != VK_NULL_HANDLE)
     {
         if (dispatch.DestroyPipelineLayout)
@@ -838,6 +851,11 @@ bool EnsureDeviceComputePipeline(VkDevice device,
         dispatch.DestroyPipeline(device, state->pipeline, nullptr);
         state->pipeline = VK_NULL_HANDLE;
     }
+    if (state->sampler != VK_NULL_HANDLE && dispatch.DestroySampler)
+    {
+        dispatch.DestroySampler(device, state->sampler, nullptr);
+        state->sampler = VK_NULL_HANDLE;
+    }
     if (state->pipelineLayout != VK_NULL_HANDLE && dispatch.DestroyPipelineLayout)
     {
         dispatch.DestroyPipelineLayout(device, state->pipelineLayout, nullptr);
@@ -867,16 +885,21 @@ bool EnsureDeviceComputePipeline(VkDevice device,
         return false;
     }
 
-    VkDescriptorSetLayoutBinding binding{};
-    binding.binding = 0;
-    binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    binding.descriptorCount = 1;
-    binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &binding;
+    layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+    layoutInfo.pBindings = bindings.data();
 
     VkResult layoutResult = dispatch.CreateDescriptorSetLayout(device, &layoutInfo, nullptr, &state->descriptorSetLayout);
     if (layoutResult != VK_SUCCESS)
@@ -927,20 +950,56 @@ bool EnsureDeviceComputePipeline(VkDevice device,
         return false;
     }
 
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    poolSize.descriptorCount = 1;
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.mipLodBias = 0.0f;
+    samplerInfo.anisotropyEnable = VK_FALSE;
+    samplerInfo.maxAnisotropy = 1.0f;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = 0.0f;
+    samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+
+    VkResult samplerResult = dispatch.CreateSampler(device, &samplerInfo, nullptr, &state->sampler);
+    if (samplerResult != VK_SUCCESS)
+    {
+        Log("[TESR][Layer] Failed to create compute sampler (%d)", samplerResult);
+        dispatch.DestroyPipeline(device, state->pipeline, nullptr);
+        state->pipeline = VK_NULL_HANDLE;
+        dispatch.DestroyPipelineLayout(device, state->pipelineLayout, nullptr);
+        state->pipelineLayout = VK_NULL_HANDLE;
+        dispatch.DestroyDescriptorSetLayout(device, state->descriptorSetLayout, nullptr);
+        state->descriptorSetLayout = VK_NULL_HANDLE;
+        dispatch.DestroyShaderModule(device, state->shaderModule, nullptr);
+        state->shaderModule = VK_NULL_HANDLE;
+        return false;
+    }
+
+    std::array<VkDescriptorPoolSize, 2> poolSizes{};
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    poolSizes[0].descriptorCount = 1;
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[1].descriptorCount = 1;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.maxSets = 1;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
 
     VkResult poolResult = dispatch.CreateDescriptorPool(device, &poolInfo, nullptr, &state->descriptorPool);
     if (poolResult != VK_SUCCESS)
     {
         Log("[TESR][Layer] Failed to create descriptor pool (%d)", poolResult);
+        dispatch.DestroySampler(device, state->sampler, nullptr);
+        state->sampler = VK_NULL_HANDLE;
         dispatch.DestroyPipeline(device, state->pipeline, nullptr);
         state->pipeline = VK_NULL_HANDLE;
         dispatch.DestroyPipelineLayout(device, state->pipelineLayout, nullptr);
@@ -964,6 +1023,8 @@ bool EnsureDeviceComputePipeline(VkDevice device,
         Log("[TESR][Layer] Failed to allocate descriptor set (%d)", allocResult);
         dispatch.DestroyDescriptorPool(device, state->descriptorPool, nullptr);
         state->descriptorPool = VK_NULL_HANDLE;
+        dispatch.DestroySampler(device, state->sampler, nullptr);
+        state->sampler = VK_NULL_HANDLE;
         dispatch.DestroyPipeline(device, state->pipeline, nullptr);
         state->pipeline = VK_NULL_HANDLE;
         dispatch.DestroyPipelineLayout(device, state->pipelineLayout, nullptr);
@@ -1295,6 +1356,65 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         return false;
     }
 
+    const TRBridgeInteropSurface* depthSurface = nullptr;
+    for (const auto& surface : frame.surfaces)
+    {
+        if (std::strncmp(surface.descriptor.name, "TESR_DepthTexture", sizeof(surface.descriptor.name)) == 0)
+        {
+            depthSurface = &surface;
+            break;
+        }
+    }
+
+    if (!depthSurface)
+    {
+        for (const auto& surface : frame.surfaces)
+        {
+            if (std::strncmp(surface.descriptor.name, "TESR_MainDepthStencil", sizeof(surface.descriptor.name)) == 0)
+            {
+                depthSurface = &surface;
+                break;
+            }
+        }
+    }
+
+    if (!depthSurface)
+    {
+        Log("[TESR][Layer] No depth surface available for frame %" PRIu64,
+            static_cast<std::uint64_t>(frame.inputs.frameId));
+        DropPendingFrame(frame.inputs.frameId);
+        return false;
+    }
+
+    VkImage depthImage = VK_NULL_HANDLE;
+    VkImageView depthView = VK_NULL_HANDLE;
+    for (uint32_t i = 0; i < depthSurface->handleCount; ++i)
+    {
+        const auto& handle = depthSurface->handles[i];
+        if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE)
+        {
+            depthImage = reinterpret_cast<VkImage>(handle.value);
+        }
+        else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW)
+        {
+            depthView = reinterpret_cast<VkImageView>(handle.value);
+        }
+    }
+
+    if (depthImage == VK_NULL_HANDLE || depthView == VK_NULL_HANDLE)
+    {
+        Log("[TESR][Layer] Missing Vulkan handles for depth texture in frame %" PRIu64,
+            static_cast<std::uint64_t>(frame.inputs.frameId));
+        DropPendingFrame(frame.inputs.frameId);
+        return false;
+    }
+
+    VkImageAspectFlags depthAspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    if (depthSurface->descriptor.format == TR_BRIDGE_FORMAT_D24_UNORM_S8_UINT)
+    {
+        depthAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    }
+
     const uint32_t width = outputSurface->descriptor.width;
     const uint32_t height = outputSurface->descriptor.height;
     if (width == 0 || height == 0)
@@ -1321,20 +1441,44 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
             return false;
         }
 
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-        imageInfo.imageView = outputView;
-        imageInfo.sampler = VK_NULL_HANDLE;
+        if (deviceState->sampler == VK_NULL_HANDLE)
+        {
+            Log("[TESR][Layer] Compute sampler unavailable for frame %" PRIu64,
+                static_cast<std::uint64_t>(frame.inputs.frameId));
+            DropPendingFrame(frame.inputs.frameId);
+            return false;
+        }
 
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = deviceState->descriptorSet;
-        write.dstBinding = 0;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        write.pImageInfo = &imageInfo;
+        VkDescriptorImageInfo outputInfo{};
+        outputInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        outputInfo.imageView = outputView;
+        outputInfo.sampler = VK_NULL_HANDLE;
 
-        dispatch.UpdateDescriptorSets(queueInfo.device, 1, &write, 0, nullptr);
+        VkDescriptorImageInfo depthInfo{};
+        depthInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        depthInfo.imageView = depthView;
+        depthInfo.sampler = deviceState->sampler;
+
+        std::array<VkWriteDescriptorSet, 2> writes{};
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].dstSet = deviceState->descriptorSet;
+        writes[0].dstBinding = 0;
+        writes[0].descriptorCount = 1;
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        writes[0].pImageInfo = &outputInfo;
+
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].dstSet = deviceState->descriptorSet;
+        writes[1].dstBinding = 1;
+        writes[1].descriptorCount = 1;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[1].pImageInfo = &depthInfo;
+
+        dispatch.UpdateDescriptorSets(queueInfo.device,
+                                      static_cast<uint32_t>(writes.size()),
+                                      writes.data(),
+                                      0,
+                                      nullptr);
         deviceState->descriptorSetValid = true;
 
         VkCommandBufferBeginInfo beginInfo{};
@@ -1349,28 +1493,55 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
             return false;
         }
 
-        VkImageMemoryBarrier acquireBarrier{};
-        acquireBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        acquireBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        acquireBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        acquireBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        acquireBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        acquireBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        acquireBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        acquireBarrier.image = outputImage;
-        acquireBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        acquireBarrier.subresourceRange.baseMipLevel = 0;
-        acquireBarrier.subresourceRange.levelCount = 1;
-        acquireBarrier.subresourceRange.baseArrayLayer = 0;
-        acquireBarrier.subresourceRange.layerCount = 1;
+        std::array<VkImageMemoryBarrier, 2> acquireBarriers{};
+        uint32_t acquireCount = 0;
+
+        VkImageMemoryBarrier outputAcquire{};
+        outputAcquire.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        outputAcquire.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        outputAcquire.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        outputAcquire.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        outputAcquire.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        outputAcquire.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        outputAcquire.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        outputAcquire.image = outputImage;
+        outputAcquire.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        outputAcquire.subresourceRange.baseMipLevel = 0;
+        outputAcquire.subresourceRange.levelCount = 1;
+        outputAcquire.subresourceRange.baseArrayLayer = 0;
+        outputAcquire.subresourceRange.layerCount = 1;
+        acquireBarriers[acquireCount++] = outputAcquire;
+
+        VkPipelineStageFlags acquireSrcStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+        VkImageMemoryBarrier depthAcquire{};
+        if (depthImage != VK_NULL_HANDLE)
+        {
+            depthAcquire.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            depthAcquire.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            depthAcquire.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            depthAcquire.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            depthAcquire.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            depthAcquire.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            depthAcquire.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            depthAcquire.image = depthImage;
+            depthAcquire.subresourceRange.aspectMask = depthAspectMask;
+            depthAcquire.subresourceRange.baseMipLevel = 0;
+            depthAcquire.subresourceRange.levelCount = 1;
+            depthAcquire.subresourceRange.baseArrayLayer = 0;
+            depthAcquire.subresourceRange.layerCount = 1;
+            acquireBarriers[acquireCount++] = depthAcquire;
+            acquireSrcStages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        }
 
         dispatch.CmdPipelineBarrier(state->commandBuffer,
-                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                    acquireSrcStages,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                     0,
                                     0, nullptr,
                                     0, nullptr,
-                                    1, &acquireBarrier);
+                                    acquireCount,
+                                    acquireBarriers.data());
 
         dispatch.CmdBindPipeline(state->commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, deviceState->pipeline);
         dispatch.CmdBindDescriptorSets(state->commandBuffer,
@@ -1386,28 +1557,55 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         const uint32_t groupSizeY = (height + 7u) / 8u;
         dispatch.CmdDispatch(state->commandBuffer, groupSizeX == 0 ? 1 : groupSizeX, groupSizeY == 0 ? 1 : groupSizeY, 1);
 
-        VkImageMemoryBarrier releaseBarrier{};
-        releaseBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        releaseBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        releaseBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        releaseBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        releaseBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        releaseBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        releaseBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        releaseBarrier.image = outputImage;
-        releaseBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        releaseBarrier.subresourceRange.baseMipLevel = 0;
-        releaseBarrier.subresourceRange.levelCount = 1;
-        releaseBarrier.subresourceRange.baseArrayLayer = 0;
-        releaseBarrier.subresourceRange.layerCount = 1;
+        std::array<VkImageMemoryBarrier, 2> releaseBarriers{};
+        uint32_t releaseCount = 0;
+
+        VkImageMemoryBarrier outputRelease{};
+        outputRelease.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        outputRelease.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        outputRelease.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        outputRelease.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        outputRelease.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        outputRelease.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        outputRelease.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        outputRelease.image = outputImage;
+        outputRelease.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        outputRelease.subresourceRange.baseMipLevel = 0;
+        outputRelease.subresourceRange.levelCount = 1;
+        outputRelease.subresourceRange.baseArrayLayer = 0;
+        outputRelease.subresourceRange.layerCount = 1;
+        releaseBarriers[releaseCount++] = outputRelease;
+
+        VkPipelineStageFlags releaseDstStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+        VkImageMemoryBarrier depthRelease{};
+        if (depthImage != VK_NULL_HANDLE)
+        {
+            depthRelease.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            depthRelease.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            depthRelease.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            depthRelease.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            depthRelease.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            depthRelease.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            depthRelease.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            depthRelease.image = depthImage;
+            depthRelease.subresourceRange.aspectMask = depthAspectMask;
+            depthRelease.subresourceRange.baseMipLevel = 0;
+            depthRelease.subresourceRange.levelCount = 1;
+            depthRelease.subresourceRange.baseArrayLayer = 0;
+            depthRelease.subresourceRange.layerCount = 1;
+            releaseBarriers[releaseCount++] = depthRelease;
+            releaseDstStages |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        }
 
         dispatch.CmdPipelineBarrier(state->commandBuffer,
                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                    releaseDstStages,
                                     0,
                                     0, nullptr,
                                     0, nullptr,
-                                    1, &releaseBarrier);
+                                    releaseCount,
+                                    releaseBarriers.data());
 
         endResult = dispatch.EndCommandBuffer(state->commandBuffer);
         if (endResult != VK_SUCCESS)
@@ -1566,6 +1764,8 @@ void InitDeviceDispatch(VkDevice device)
     dispatch.AllocateDescriptorSets = reinterpret_cast<PFN_vkAllocateDescriptorSets>(g_nextGetDeviceProcAddr(device, "vkAllocateDescriptorSets"));
     dispatch.FreeDescriptorSets = reinterpret_cast<PFN_vkFreeDescriptorSets>(g_nextGetDeviceProcAddr(device, "vkFreeDescriptorSets"));
     dispatch.UpdateDescriptorSets = reinterpret_cast<PFN_vkUpdateDescriptorSets>(g_nextGetDeviceProcAddr(device, "vkUpdateDescriptorSets"));
+    dispatch.CreateSampler = reinterpret_cast<PFN_vkCreateSampler>(g_nextGetDeviceProcAddr(device, "vkCreateSampler"));
+    dispatch.DestroySampler = reinterpret_cast<PFN_vkDestroySampler>(g_nextGetDeviceProcAddr(device, "vkDestroySampler"));
     dispatch.CmdBindPipeline = reinterpret_cast<PFN_vkCmdBindPipeline>(g_nextGetDeviceProcAddr(device, "vkCmdBindPipeline"));
     dispatch.CmdBindDescriptorSets = reinterpret_cast<PFN_vkCmdBindDescriptorSets>(g_nextGetDeviceProcAddr(device, "vkCmdBindDescriptorSets"));
     dispatch.CmdDispatch = reinterpret_cast<PFN_vkCmdDispatch>(g_nextGetDeviceProcAddr(device, "vkCmdDispatch"));

@@ -924,13 +924,20 @@ void ShaderManager::SwitchShaderStatus(const char* Name) {
 
 	// shaders
 	ShaderCollection* shader = GetShaderCollectionByName(Name);
-	if (shader) {
-		bool setting = shader->SwitchShader();
-		TheSettingManager->SetMenuShaderEnabled(Name, setting);
+        if (shader) {
+                bool setting = shader->SwitchShader();
+                TheSettingManager->SetMenuShaderEnabled(Name, setting);
 
-		IsMenuSwitch = false;
-		return;
-	}
+                IsMenuSwitch = false;
+                return;
+        }
+
+        if (!strcmp(Name, "VulkanAmbientOcclusion")) {
+                bool enabled = TheSettingManager->GetMenuShaderEnabled(Name);
+                TheSettingManager->SetMenuShaderEnabled(Name, !enabled);
+        }
+
+        IsMenuSwitch = false;
 }
 
 void ShaderManager::SetCustomConstant(const char* Name, D3DXVECTOR4 Value) {
