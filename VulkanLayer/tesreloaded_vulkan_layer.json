@@ -1,0 +1,21 @@
+{
+    "file_format_version": "1.3.0",
+    "layer": {
+        "name": "VK_LAYER_TESRELOADED_implicit",
+        "type": "GLOBAL",
+        "library_path": "TESReloadedVulkanLayer.dll",
+        "api_version": "1.3.0",
+        "implementation_version": 1,
+        "description": "TESReloaded implicit compute orchestration layer",
+        "disable_environment": {
+            "DISABLE_TESRELOADED_VULKAN_LAYER": "1"
+        },
+        "enable_environment": {
+            "ENABLE_TESRELOADED_VULKAN_LAYER": "1"
+        },
+        "functions": {
+            "vkGetInstanceProcAddr": "vkGetInstanceProcAddr",
+            "vkGetDeviceProcAddr": "vkGetDeviceProcAddr"
+        }
+    }
+}
