@@ -1,3 +1,4 @@
+#define VK_NO_PROTOTYPES
 #include "VulkanLayerStubs.h"
 
 #include "../Shared/Bridge/Bridge.h"
@@ -32,6 +33,7 @@
 #endif
 
 #include <shaderc/shaderc.h>
+#include <vulkan/vulkan.h>
 
 namespace tesreloaded::vulkan
 {
@@ -1350,11 +1352,11 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         const auto& handle = outputSurface->handles[i];
         if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE)
         {
-            outputImage = reinterpret_cast<VkImage>(handle.value);
+            outputImage = static_cast<VkImage>(handle.value);
         }
         else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW)
         {
-            outputView = reinterpret_cast<VkImageView>(handle.value);
+            outputView = static_cast<VkImageView>(handle.value);
         }
     }
 
@@ -1431,11 +1433,11 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         const auto& handle = sourceSurface->handles[i];
         if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE)
         {
-            sourceImage = reinterpret_cast<VkImage>(handle.value);
+            sourceImage = static_cast<VkImage>(handle.value);
         }
         else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW)
         {
-            sourceView = reinterpret_cast<VkImageView>(handle.value);
+            sourceView = static_cast<VkImageView>(handle.value);
         }
     }
 
@@ -1454,11 +1456,11 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         const auto& handle = depthSurface->handles[i];
         if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE)
         {
-            depthImage = reinterpret_cast<VkImage>(handle.value);
+            depthImage = static_cast<VkImage>(handle.value);
         }
         else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW)
         {
-            depthView = reinterpret_cast<VkImageView>(handle.value);
+            depthView = static_cast<VkImageView>(handle.value);
         }
     }
 
@@ -1477,11 +1479,11 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
         const auto& handle = normalsSurface->handles[i];
         if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE)
         {
-            normalsImage = reinterpret_cast<VkImage>(handle.value);
+            normalsImage = static_cast<VkImage>(handle.value);
         }
         else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_IMAGE_VIEW)
         {
-            normalsView = reinterpret_cast<VkImageView>(handle.value);
+            normalsView = static_cast<VkImageView>(handle.value);
         }
     }
 
@@ -1817,7 +1819,7 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
             const auto& handle = frame.syncState.waitHandles[i];
             if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_SEMAPHORE && handle.value != 0)
             {
-                waitSemaphores.push_back(reinterpret_cast<VkSemaphore>(handle.value));
+                waitSemaphores.push_back(static_cast<VkSemaphore>(handle.value));
                 waitValues.push_back(decodeTimelineValue(handle.auxValue, hasTimelineWait));
                 waitStages.push_back(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
             }
@@ -1828,12 +1830,12 @@ bool TryInjectComputeWork(VkQueue queue, const QueueRegistration& queueInfo, Dev
             const auto& handle = frame.syncState.signalHandles[i];
             if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_SEMAPHORE && handle.value != 0)
             {
-                signalSemaphores.push_back(reinterpret_cast<VkSemaphore>(handle.value));
+                signalSemaphores.push_back(static_cast<VkSemaphore>(handle.value));
                 signalValues.push_back(decodeTimelineValue(handle.auxValue, hasTimelineSignal));
             }
             else if (handle.type == TR_BRIDGE_INTEROP_HANDLE_VK_FENCE && handle.value != 0)
             {
-                externalFence = reinterpret_cast<VkFence>(handle.value);
+                externalFence = static_cast<VkFence>(handle.value);
             }
         }
     }
@@ -1955,13 +1957,13 @@ VKAPI_ATTR VkResult VKAPI_CALL Layer_vkCreateInstance(const VkInstanceCreateInfo
 
     TRBridge_Initialize();
 
-    auto* chainInfo = GetInstanceChainInfo(pCreateInfo, VK_LAYER_LINK_INFO);
+    VkLayerInstanceCreateInfo* chainInfo = GetInstanceChainInfo(pCreateInfo, VK_LAYER_LINK_INFO);
     assert(chainInfo != nullptr);
 
-    auto* layerInfo = chainInfo->u.layerInfo.pLayerInfo;
+    VkLayerInstanceLink* layerInfo = chainInfo->u.pLayerInfo;
     assert(layerInfo != nullptr);
     g_nextGetInstanceProcAddr = layerInfo->pfnNextGetInstanceProcAddr;
-    chainInfo->u.layerInfo.pLayerInfo = layerInfo->pNext;
+    chainInfo->u.pLayerInfo = layerInfo->pNext;
 
     auto fpCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(g_nextGetInstanceProcAddr(nullptr, "vkCreateInstance"));
     VkResult result = fpCreateInstance(pCreateInfo, pAllocator, pInstance);
@@ -1993,11 +1995,11 @@ VKAPI_ATTR VkResult VKAPI_CALL Layer_vkCreateDevice(VkPhysicalDevice physicalDev
     auto* chainInfo = GetDeviceChainInfo(pCreateInfo, VK_LAYER_LINK_INFO);
     assert(chainInfo != nullptr);
 
-    auto* layerInfo = chainInfo->u.layerInfo.pLayerInfo;
+    auto* layerInfo = chainInfo->u.pLayerInfo;
     assert(layerInfo != nullptr);
     g_nextGetInstanceProcAddr = layerInfo->pfnNextGetInstanceProcAddr;
     g_nextGetDeviceProcAddr = layerInfo->pfnNextGetDeviceProcAddr;
-    chainInfo->u.layerInfo.pLayerInfo = layerInfo->pNext;
+    chainInfo->u.pLayerInfo = layerInfo->pNext;
 
     auto fpCreateDevice = reinterpret_cast<PFN_vkCreateDevice>(g_nextGetInstanceProcAddr(nullptr, "vkCreateDevice"));
 
@@ -2020,7 +2022,7 @@ VKAPI_ATTR void VKAPI_CALL Layer_vkDestroyDevice(VkDevice device, const VkAlloca
     RemoveDevice(device);
 }
 
-VKAPI_ATTR void VKAPI_CALL Layer_vkGetDeviceQueue(VkDevice device,
+VKAPI_ATTR void VKAPI_CALL Layer_NvrVkGetDeviceQueue(VkDevice device,
                                                   uint32_t queueFamilyIndex,
                                                   uint32_t queueIndex,
                                                   VkQueue* pQueue)
@@ -2030,7 +2032,7 @@ VKAPI_ATTR void VKAPI_CALL Layer_vkGetDeviceQueue(VkDevice device,
     RegisterQueue(device, *pQueue, queueFamilyIndex);
 }
 
-VKAPI_ATTR void VKAPI_CALL Layer_vkGetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* pQueueInfo, VkQueue* pQueue)
+VKAPI_ATTR void VKAPI_CALL Layer_NvrVkGetDeviceQueue2(VkDevice device, const VkDeviceQueueInfo2* pQueueInfo, VkQueue* pQueue)
 {
     auto& table = GetDeviceDispatch(device);
     if (table.GetDeviceQueue2)
@@ -2045,7 +2047,7 @@ VKAPI_ATTR void VKAPI_CALL Layer_vkGetDeviceQueue2(VkDevice device, const VkDevi
     }
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL Layer_vkQueueSubmit(VkQueue queue,
+VKAPI_ATTR VkResult VKAPI_CALL Layer_NvrVkQueueSubmit(VkQueue queue,
                                                    uint32_t submitCount,
                                                    const VkSubmitInfo* pSubmits,
                                                    VkFence fence)
@@ -2079,7 +2081,7 @@ VKAPI_ATTR VkResult VKAPI_CALL Layer_vkQueueSubmit(VkQueue queue,
     return result;
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL Layer_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
+VKAPI_ATTR VkResult VKAPI_CALL Layer_NvrVkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
 {
     Log("[TESR][Layer] vkQueuePresentKHR intercept (queue=%p)", static_cast<void*>(queue));
     TRBridge_MarkLayerHeartbeat();
@@ -2113,19 +2115,19 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Layer_vkGetDeviceProcAddr(VkDevice devi
     }
     if (std::strcmp(pName, "vkGetDeviceQueue") == 0)
     {
-        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_vkGetDeviceQueue);
+        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_NvrVkGetDeviceQueue);
     }
     if (std::strcmp(pName, "vkGetDeviceQueue2") == 0)
     {
-        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_vkGetDeviceQueue2);
+        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_NvrVkGetDeviceQueue2);
     }
     if (std::strcmp(pName, "vkQueueSubmit") == 0)
     {
-        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_vkQueueSubmit);
+        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_NvrVkQueueSubmit);
     }
     if (std::strcmp(pName, "vkQueuePresentKHR") == 0)
     {
-        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_vkQueuePresentKHR);
+        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_NvrVkQueuePresentKHR);
     }
 
     if (g_nextGetDeviceProcAddr)
@@ -2135,11 +2137,11 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Layer_vkGetDeviceProcAddr(VkDevice devi
     return nullptr;
 }
 
-VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Layer_vkGetInstanceProcAddr(VkInstance instance, const char* pName)
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL VkLayer_vkGetInstanceProcAddr(VkInstance instance, const char* pName)
 {
     if (std::strcmp(pName, "vkGetInstanceProcAddr") == 0)
     {
-        return reinterpret_cast<PFN_vkVoidFunction>(&Layer_vkGetInstanceProcAddr);
+        return reinterpret_cast<PFN_vkVoidFunction>(&VkLayer_vkGetInstanceProcAddr);
     }
     if (std::strcmp(pName, "vkGetDeviceProcAddr") == 0)
     {
@@ -2165,7 +2167,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Layer_vkGetInstanceProcAddr(VkInstance 
     return nullptr;
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceLayerProperties(uint32_t* pPropertyCount,
+VKAPI_ATTR VkResult VKAPI_CALL NvrVkEnumerateInstanceLayerProperties(uint32_t* pPropertyCount,
                                                                   VkLayerProperties* pProperties)
 {
     if (pProperties == nullptr)
@@ -2180,24 +2182,24 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceLayerProperties(uint32_t* pPro
     }
 
     VkLayerProperties props{};
-    std::strncpy(props.layerName, kLayerName, sizeof(props.layerName) - 1);
+    strncpy_s(props.layerName, kLayerName, sizeof(props.layerName) - 1);
     props.specVersion = VK_MAKE_API_VERSION(0, 1, 3, 0);
     props.implementationVersion = 1;
-    std::strncpy(props.description, "TESReloaded implicit Vulkan layer", sizeof(props.description) - 1);
+    strncpy_s(props.description, "TESReloaded implicit Vulkan layer", sizeof(props.description) - 1);
 
     pProperties[0] = props;
     *pPropertyCount = 1;
     return VK_SUCCESS;
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceLayerProperties(VkPhysicalDevice /*physicalDevice*/,
+VKAPI_ATTR VkResult VKAPI_CALL Layer_vkEnumerateDeviceLayerProperties(VkPhysicalDevice /*physicalDevice*/,
                                                                 uint32_t* pPropertyCount,
                                                                 VkLayerProperties* pProperties)
 {
-    return vkEnumerateInstanceLayerProperties(pPropertyCount, pProperties);
+    return NvrVkEnumerateInstanceLayerProperties(pPropertyCount, pProperties);
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceExtensionProperties(const char* /*layerName*/,
+VKAPI_ATTR VkResult VKAPI_CALL Layer_vkEnumerateInstanceExtensionProperties(const char* /*layerName*/,
                                                                       uint32_t* pPropertyCount,
                                                                       VkExtensionProperties* pProperties)
 {
@@ -2211,15 +2213,15 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceExtensionProperties(const char
     return VK_SUCCESS;
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(VkPhysicalDevice /*physicalDevice*/,
+VKAPI_ATTR VkResult VKAPI_CALL Layer_vkEnumerateDeviceExtensionProperties(VkPhysicalDevice /*physicalDevice*/,
                                                                     const char* /*layerName*/,
                                                                     uint32_t* pPropertyCount,
                                                                     VkExtensionProperties* pProperties)
 {
-    return vkEnumerateInstanceExtensionProperties(nullptr, pPropertyCount, pProperties);
+    return Layer_vkEnumerateInstanceExtensionProperties(nullptr, pPropertyCount, pProperties);
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface* pVersionStruct)
+VKAPI_ATTR VkResult VKAPI_CALL Layer_vkNegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface* pVersionStruct)
 {
     if (pVersionStruct == nullptr)
     {
@@ -2232,7 +2234,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion(VkNegotiat
     }
 
     pVersionStruct->loaderLayerInterfaceVersion = 2;
-    pVersionStruct->pfnGetInstanceProcAddr = &Layer_vkGetInstanceProcAddr;
+    pVersionStruct->pfnGetInstanceProcAddr = &VkLayer_vkGetInstanceProcAddr;
     pVersionStruct->pfnGetDeviceProcAddr = &Layer_vkGetDeviceProcAddr;
     pVersionStruct->pfnGetPhysicalDeviceProcAddr = nullptr;
 
@@ -2244,29 +2246,29 @@ VKAPI_ATTR VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion(VkNegotiat
 
 extern "C"
 {
-VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance instance, const char* pName)
+    __declspec(dllexport) VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance instance, const char* pName)
 {
-    return tesreloaded::vulkan::Layer_vkGetInstanceProcAddr(instance, pName);
+    return tesreloaded::vulkan::VkLayer_vkGetInstanceProcAddr(instance, pName);
 }
 
-VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char* pName)
+    __declspec(dllexport) VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char* pName)
 {
     return tesreloaded::vulkan::Layer_vkGetDeviceProcAddr(device, pName);
 }
 
-VK_LAYER_EXPORT VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCreateInfo,
+    __declspec(dllexport) VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCreateInfo,
                                                      const VkAllocationCallbacks* pAllocator,
                                                      VkInstance* pInstance)
 {
     return tesreloaded::vulkan::Layer_vkCreateInstance(pCreateInfo, pAllocator, pInstance);
 }
 
-VK_LAYER_EXPORT void VKAPI_CALL vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator)
+    __declspec(dllexport) VKAPI_ATTR void VKAPI_CALL vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator)
 {
     tesreloaded::vulkan::Layer_vkDestroyInstance(instance, pAllocator);
 }
 
-VK_LAYER_EXPORT VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice,
+    __declspec(dllexport) VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice,
                                                    const VkDeviceCreateInfo* pCreateInfo,
                                                    const VkAllocationCallbacks* pAllocator,
                                                    VkDevice* pDevice)
@@ -2274,42 +2276,36 @@ VK_LAYER_EXPORT VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevi
     return tesreloaded::vulkan::Layer_vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
 }
 
-VK_LAYER_EXPORT void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator)
+    __declspec(dllexport) VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator)
 {
     tesreloaded::vulkan::Layer_vkDestroyDevice(device, pAllocator);
 }
 
-VK_LAYER_EXPORT VkResult VKAPI_CALL vkEnumerateInstanceLayerProperties(uint32_t* pPropertyCount,
-                                                                       VkLayerProperties* pProperties)
-{
-    return tesreloaded::vulkan::vkEnumerateInstanceLayerProperties(pPropertyCount, pProperties);
-}
-
-VK_LAYER_EXPORT VkResult VKAPI_CALL vkEnumerateDeviceLayerProperties(VkPhysicalDevice physicalDevice,
+    __declspec(dllexport) VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceLayerProperties(VkPhysicalDevice physicalDevice,
                                                                      uint32_t* pPropertyCount,
                                                                      VkLayerProperties* pProperties)
 {
-    return tesreloaded::vulkan::vkEnumerateDeviceLayerProperties(physicalDevice, pPropertyCount, pProperties);
+    return tesreloaded::vulkan::Layer_vkEnumerateDeviceLayerProperties(physicalDevice, pPropertyCount, pProperties);
 }
 
-VK_LAYER_EXPORT VkResult VKAPI_CALL vkEnumerateInstanceExtensionProperties(const char* layerName,
+    __declspec(dllexport) VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceExtensionProperties(const char* layerName,
                                                                            uint32_t* pPropertyCount,
                                                                            VkExtensionProperties* pProperties)
 {
-    return tesreloaded::vulkan::vkEnumerateInstanceExtensionProperties(layerName, pPropertyCount, pProperties);
+    return tesreloaded::vulkan::Layer_vkEnumerateInstanceExtensionProperties(layerName, pPropertyCount, pProperties);
 }
 
-VK_LAYER_EXPORT VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(VkPhysicalDevice physicalDevice,
+    __declspec(dllexport) VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(VkPhysicalDevice physicalDevice,
                                                                          const char* layerName,
                                                                          uint32_t* pPropertyCount,
                                                                          VkExtensionProperties* pProperties)
 {
-    return tesreloaded::vulkan::vkEnumerateDeviceExtensionProperties(physicalDevice, layerName, pPropertyCount, pProperties);
+    return tesreloaded::vulkan::Layer_vkEnumerateDeviceExtensionProperties(physicalDevice, layerName, pPropertyCount, pProperties);
 }
 
-VK_LAYER_EXPORT VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface* pVersionStruct)
+    VKAPI_ATTR VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion(VkNegotiateLayerInterface* pVersionStruct)
 {
-    return tesreloaded::vulkan::vkNegotiateLoaderLayerInterfaceVersion(pVersionStruct);
+    return tesreloaded::vulkan::Layer_vkNegotiateLoaderLayerInterfaceVersion(pVersionStruct);
 }
 }
 

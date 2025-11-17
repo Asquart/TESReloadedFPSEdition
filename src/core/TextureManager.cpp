@@ -214,22 +214,21 @@ void TextureManager::Initialize() {
                 g_bridgeRenderTargets.clear();
         }
 
-        if (EnvironmentFlagEnabled("TESR_ENABLE_VK_INTEROP"))
+        if (DxvkInterop_Initialize(Device) && DxvkInterop_IsAvailable())
         {
-                if (DxvkInterop_Initialize(Device) && DxvkInterop_IsAvailable())
-                {
-                        g_vulkanInteropAvailable = true;
-                        g_vulkanInteropValidation = EnvironmentFlagEnabled("TESR_VALIDATE_VK_INTEROP");
-                        Logger::Log("[TESR][Interop] Vulkan interop enabled%s", g_vulkanInteropValidation ? " with validation" : "");
-                }
-                else
-                {
-                        Logger::Log("[TESR][Interop] Vulkan interop requested but unavailable");
-                }
+                Logger::Log("[TESR][Interop] Vulkan interop enabled");
         }
         else
         {
-                Logger::Log("[TESR][Interop] Vulkan interop disabled (TESR_ENABLE_VK_INTEROP not set)");
+                Logger::Log("[TESR][Interop] Vulkan interop requested but unavailable");
+                if (!DxvkInterop_Initialize(Device))
+                {
+                    Logger::Log("[TESR][Interop] DxvkInterop_Initialize failed");
+                }
+                if (!DxvkInterop_IsAvailable())
+                {
+                    Logger::Log("[TESR][Interop] DxvkInterop_IsAvailable failed");
+                }
         }
 
         // create textures used by NVR and bind them to surfaces
@@ -342,7 +341,7 @@ void TextureManager::PublishBridgeState() {
 
                 TRBridgeRenderTargetDescriptor descriptor{};
                 std::strncpy(descriptor.name, name.c_str(), sizeof(descriptor.name) - 1);
-                descriptor.name[sizeof(descriptor.name) - 1] = ' ';
+                descriptor.name[sizeof(descriptor.name) - 1] = ' ';
                 descriptor.width = desc.Width;
                 descriptor.height = desc.Height;
                 descriptor.mipLevels = texture ? texture->GetLevelCount() : 1;
