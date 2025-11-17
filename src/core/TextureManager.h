@@ -7,7 +7,6 @@ typedef std::vector<TextureRecord*> WaterMapList;
 class TextureManager { // Never disposed
 public:
 	static void				Initialize();
-        static void                             PublishBridgeState();
 	void					InitTexture(const char* Name, IDirect3DTexture9** Texture, IDirect3DSurface9** Surface, int Width, int Height, D3DFORMAT format, bool mipmaps = false);
 	void					RegisterTexture(const char* Name, IDirect3DBaseTexture9** Texture);
 	void					SetWaterHeightMap(IDirect3DBaseTexture9* WaterHeightMap);

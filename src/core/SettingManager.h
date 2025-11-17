@@ -124,18 +124,17 @@ struct SettingsMainStruct {
 		float	NearQuality;
 	};
 
-        struct ShadersStruct {
-                bool Blood;
-                bool Grass;
-                bool HDR;
-                bool NightEye;
-                bool POM;
-                bool Skin;
-                bool Terrain;
-                bool Water;
-                bool VulkanAmbientOcclusion;
-                bool Extra;
-        };
+	struct ShadersStruct {
+		bool Blood;
+		bool Grass;
+		bool HDR;
+		bool NightEye;
+		bool POM;
+		bool Skin;
+		bool Terrain;
+		bool Water;
+		bool Extra;
+	};
 
 
 	struct MenuStruct {

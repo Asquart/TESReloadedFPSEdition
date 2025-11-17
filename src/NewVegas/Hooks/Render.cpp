@@ -365,6 +365,7 @@ bool __fastcall NiDX9Renderer__Do_EndFrame(NiDX9Renderer* apThis, void*) {
 		TheShaderManager->ReloadEffects();
 		TheShaderManager->EffectReloadQueued = false;
 	}
+	return true;
 }
 
 

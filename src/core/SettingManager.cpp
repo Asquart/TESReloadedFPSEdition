@@ -1,30 +1,4 @@
-#include "SettingManager.h"
-#include "../../Shared/Bridge/Bridge.h"
-
 #define TOML11_PRESERVE_COMMENTS_BY_DEFAULT
-
-namespace
-{
-void SyncBridgeConfiguration(SettingManager* manager)
-{
-        if (!manager)
-                return;
-
-        TRBridgeConfiguration bridgeConfig{};
-        TRBridge_GetConfiguration(&bridgeConfig);
-
-        bridgeConfig.ambientOcclusionRadius = manager->GetSettingF("Shaders.AmbientOcclusion.Exteriors", "Range");
-        bridgeConfig.ambientOcclusionIntensity = manager->GetSettingF("Shaders.AmbientOcclusion.Exteriors", "StrengthMultiplier");
-        bridgeConfig.ambientOcclusionPower = manager->GetSettingF("Shaders.AmbientOcclusion.Exteriors", "ClampStrength");
-
-        if (manager->SettingsMain.Shaders.VulkanAmbientOcclusion)
-                bridgeConfig.flags |= TR_BRIDGE_FLAG_ENABLE_VULKAN_AO;
-        else
-                bridgeConfig.flags &= ~TR_BRIDGE_FLAG_ENABLE_VULKAN_AO;
-
-        TRBridge_SetConfiguration(&bridgeConfig);
-}
-}
 
 /*
 * The Config Class holds, accesses and maintains the current instance of config document and its keys.
@@ -535,9 +509,7 @@ void SettingManager::LoadSettings() {
 	SettingsMain.WeatherMode.CoeffSun.y = GetSettingF("Main.WeatherMode.General", "CoeffSunG");
 	SettingsMain.WeatherMode.CoeffSun.z = GetSettingF("Main.WeatherMode.General", "CoeffSunB");
 
-        SettingsMain.ShadowMode.NearQuality = GetSettingF("Main.ShadowMode.Main", "NearQuality");
-
-        SettingsMain.Shaders.VulkanAmbientOcclusion = GetSettingI("Shaders.VulkanAmbientOcclusion.Status", "Enabled");
+	SettingsMain.ShadowMode.NearQuality = GetSettingF("Main.ShadowMode.Main", "NearQuality");
 
 	strcpy(SettingsMain.Menu.TextFont, GetSettingS("Main.Menu.Style", "TextFont", Value));
 	SettingsMain.Menu.TextSize = GetSettingI("Main.Menu.Style", "TextSize");
@@ -593,12 +565,10 @@ void SettingManager::LoadSettings() {
 	SettingsMain.FlyCam.StepValue = GetSettingF("Main.FlyCam.Main", "StepValue");
 
 	SettingsMain.Develop.DebugMode = GetSettingI("Main.Develop.Main", "DebugMode");
-        SettingsMain.Develop.TraceShaders = GetSettingI("Main.Develop.Main", "TraceShaders");
-
-        SyncBridgeConfiguration(this);
+	SettingsMain.Develop.TraceShaders = GetSettingI("Main.Develop.Main", "TraceShaders");
 
 
-        Config.FillSections(&List, "Weathers"); // get the list of weathers
+	Config.FillSections(&List, "Weathers"); // get the list of weathers
 	for (StringList::iterator Iter = List.begin(); Iter != List.end(); ++Iter) {
 		const char* WeatherSection = Iter->c_str();
 		char SectionName[80];
@@ -1232,15 +1202,11 @@ bool SettingManager::GetMenuShaderEnabled(const char* Name) {
 
 
 void SettingManager::SetMenuShaderEnabled(const char* Name, bool enabled) {
-        char settingString[256];
-        strcpy(settingString, "Shaders.");
-        strcat(settingString, Name);
-        strcat(settingString, ".Status");
-        if (!strcmp(Name, "VulkanAmbientOcclusion")) {
-                SettingsMain.Shaders.VulkanAmbientOcclusion = enabled;
-                SyncBridgeConfiguration(this);
-        }
-        SetSetting(settingString, "Enabled", enabled);
+	char settingString[256];
+	strcpy(settingString, "Shaders.");
+	strcat(settingString, Name);
+	strcat(settingString, ".Status");
+	SetSetting(settingString, "Enabled", enabled);
 }
 
 bool SettingManager::GetMenuMiscEnabled(const char* Name) {
