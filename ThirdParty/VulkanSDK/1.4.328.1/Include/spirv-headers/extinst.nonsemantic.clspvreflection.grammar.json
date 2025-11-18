@@ -1,5 +1,5 @@
 {
-  "revision" : 7,
+  "revision" : 6,
   "instructions" : [
     {
       "opname" : "Kernel",
@@ -403,14 +403,6 @@
       { "kind" : "IdRef", "name" : "Kernel" },
       { "kind" : "IdRef", "name" : "Ordinal" },
       { "kind" : "IdRef", "name" : "Offset" },
-      { "kind" : "IdRef", "name" : "Size" }
-      ]
-    },
-    {
-    "opname" : "WorkgroupVariableSize",
-    "opcode" : 42,
-    "operands" : [
-      { "kind" : "IdRef", "name" : "Variable" },
       { "kind" : "IdRef", "name" : "Size" }
       ]
     }

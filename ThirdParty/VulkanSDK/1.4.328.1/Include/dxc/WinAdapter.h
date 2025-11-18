@@ -51,8 +51,7 @@
 #define _countof(a) (sizeof(a) / sizeof(*(a)))
 
 // If it is GCC, there is no UUID support and we must emulate it.
-// Clang support depends on the -fms-extensions compiler flag.
-#if !defined(__clang__) || !defined(_MSC_EXTENSIONS)
+#ifndef __clang__
 #define __EMULATE_UUID 1
 #endif // __clang__
 

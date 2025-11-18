@@ -108,6 +108,7 @@ IDirect3DBaseTexture9* TextureManager::GetFileTexture(std::string TexturePath, T
 
 	// add texture to cache
 	TextureCache[TexturePath] = Texture;
+	TryCacheVulkanImage(Texture, TexturePath);
 	return Texture;
 }
 
@@ -131,8 +132,6 @@ void TextureManager::SetWaterReflectionMap(IDirect3DBaseTexture9* WaterReflectio
 	}
 }
 
-
-
 /*
 * Debug function to save the texture from the sampler into a "Test" folder
 */
@@ -150,4 +149,38 @@ void TextureManager::DumpToFile (IDirect3DTexture9* Texture, const char*  Name) 
 	else {
 		Logger::Log("Surface is null for %s", Name);
 	}
+}
+
+void TextureManager::TryCacheVulkanImage(IDirect3DBaseTexture9* InTexture, const std::string& InName)
+{
+	if (!TheRenderManager || !TheRenderManager->DXVK)
+	{
+		return;
+	}
+
+	dxvk::Com<ID3D9VkInteropTexture> vkTex;
+	if (SUCCEEDED(InTexture->QueryInterface(__uuidof(ID3D9VkInteropTexture), (void**)&vkTex))) {
+
+		VulkanImageData NewImageData {};
+		vkTex->GetVulkanImageInfo(&NewImageData.Image, &NewImageData.ImageLayout, &NewImageData.ImageCreateInfo);
+
+		if (NewImageData.Image != VK_NULL_HANDLE) {
+			VulkanImages[InName] = NewImageData;
+		}
+	}
+	VulkanImages[InName];
+}
+
+VulkanImageData TextureManager::TryGetVkImageData(const std::string& InName)
+{
+	if (!TheRenderManager || !TheRenderManager->DXVK)
+	{
+		return VulkanImageData{};
+	}
+	VulkanImagesList::iterator Iter = VulkanImages.find(InName);
+	if (Iter == VulkanImages.end()) {
+		Logger::Log("[ERROR] vkImage %s not found.", InName.c_str());
+		return VulkanImageData{};
+	}
+	return Iter->second;
 }

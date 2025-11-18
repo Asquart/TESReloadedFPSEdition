@@ -1,5 +1,8 @@
 #pragma once
 
+#include "../../core/RenderManager.h"
+#include "../../core/TestVkShader.h"
+
 void (__thiscall* Render)(Main*, BSRenderedTexture*, int, int) = (void (__thiscall*)(Main*, BSRenderedTexture*, int, int))Hooks::Render;
 void __fastcall RenderHook(Main* This, UInt32 edx, BSRenderedTexture* RenderedTexture, int Arg2, int Arg3) {
 	
@@ -156,7 +159,6 @@ void __cdecl ProcessImageSpaceShadersHook(NiDX9Renderer* Renderer, BSRenderedTex
 		RenderState->SetRenderState(D3DRS_POINTSIZE, 810365505, RenderStateArgs); // fix flickering linked to alpha somehow
 
 		TheShaderManager->RenderEffectsPreTonemapping(GameSurface);
-	
 	}
 
 	ProcessImageSpaceShaders(Renderer, SourceTarget, DestinationTarget);
@@ -168,7 +170,44 @@ void __cdecl ProcessImageSpaceShadersHook(NiDX9Renderer* Renderer, BSRenderedTex
 		TheRenderManager->CheckAndTakeScreenShot(OutputSurface, TheSettingManager->SettingsMain.Main.HDRScreenshot);
 	}
 
-	if (GameSurface) GameSurface->Release();
+	
+	{
+
+		//VulkanImageData NewImageData{};
+		//vkTex->GetVulkanImageInfo(&NewImageData.Image, &NewImageData.ImageLayout, &NewImageData.ImageCreateInfo);
+
+		//if (NewImageData.Image != VK_NULL_HANDLE)
+		{
+			//dxvk::Com<ID3D9VkInteropDevice> vkDevice;
+			//Device->QueryInterface(__uuidof(ID3D9VkInteropDevice), (void**)&vkDevice);
+
+			//VulkanDeviceData DeviceData;
+			//VulkanQueueData QueueData;
+
+			//vkDevice->GetVulkanHandles(&TheRenderManager->VkDeviceData.Instance, &TheRenderManager->VkDeviceData.PhysicalDevice, &TheRenderManager->VkDeviceData.Device);
+			//vkDevice->GetVulkanHandles(&DeviceData.Instance, &DeviceData.PhysicalDevice, &DeviceData.Device);
+			//vkDevice->GetSubmissionQueue(&QueueData.Queue, &QueueData.QueueIndex, &QueueData.FamilyIndex);
+
+			
+
+			// run Vulkan compute pass
+
+			Logger::Log("Running Test vulkan compute");
+			TheVulkanTestShader->RunCompute(GameSurface);
+			// run Vulkan compute pass
+		}
+	}
+	if (GameSurface) {
+		// DEBUG: blit to backbuffer
+		//IDirect3DSurface9* backBuffer = nullptr;
+		//Device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer);
+		//if (backBuffer) {
+		//	Device->StretchRect(GameSurface, nullptr, backBuffer, nullptr, D3DTEXF_POINT);
+		//	backBuffer->Release();
+		//}
+
+		GameSurface->Release();
+	}
 }
 
 static void RenderMainMenuMovie() { 

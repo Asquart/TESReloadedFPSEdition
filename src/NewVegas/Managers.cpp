@@ -9,6 +9,7 @@ GameMenuManager*	TheGameMenuManager	= NULL;
 ShadowManager*		TheShadowManager	= NULL;
 CameraManager*		TheCameraManager	= NULL;
 BinkManager*		TheBinkManager		= NULL;
+TestVkShader*		TheVulkanTestShader = NULL;
 
 Main*					Global			 = NULL;
 TES*					Tes				 = NULL;
@@ -20,7 +21,6 @@ QueuedModelLoader*		ModelLoader		 = NULL;
 ShadowSceneNode*		SceneNode		 = NULL;
 
 void InitializeManagers() {
-
 	TextureManager::Initialize();
 	ShaderManager::Initialize();
 	FrameRateManager::Initialize();
@@ -29,5 +29,4 @@ void InitializeManagers() {
 	ShadowManager::Initialize();
 	CameraManager::Initialize();
 	BinkManager::Initialize();
-
 }
