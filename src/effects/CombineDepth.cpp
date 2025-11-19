@@ -1,5 +1,8 @@
 #include "CombineDepth.h"
 
+#include "../../Shared/Bridge/Bridge.h"
+#include "../core/TextureManager.h"
+
 
 void CombineDepthEffect::UpdateConstants() {
 	NiCamera* Camera = WorldSceneGraph->camera;
@@ -15,5 +18,10 @@ void CombineDepthEffect::UpdateConstants() {
 }
 
 void CombineDepthEffect::RegisterTextures() {
-	TheTextureManager->InitTexture("TESR_DepthBuffer", &Textures.CombinedDepthTexture, &Textures.CombinedDepthSurface, TheRenderManager->width, TheRenderManager->height, D3DFMT_G32R32F);
+        TheTextureManager->InitTexture("TESR_DepthBuffer", &Textures.CombinedDepthTexture, &Textures.CombinedDepthSurface, TheRenderManager->width, TheRenderManager->height, D3DFMT_G32R32F);
+        TextureManager::RegisterBridgeRenderTarget("TESR_DepthBuffer",
+                &Textures.CombinedDepthTexture,
+                &Textures.CombinedDepthSurface,
+                TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+        TextureManager::PublishBridgeState();
 }

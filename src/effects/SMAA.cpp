@@ -2,6 +2,9 @@
 
 #include "SMAA.h"
 
+#include "../../Shared/Bridge/Bridge.h"
+#include "../core/TextureManager.h"
+
 void SMAAEffect::RegisterConstants() {
 	TheShaderManager->RegisterConstant("TESR_SMAAResolution", &Constants.Resolution);
 };
@@ -10,8 +13,17 @@ void SMAAEffect::RegisterTextures() {
 	int width = TheRenderManager->width;
 	int height = TheRenderManager->height;
 
-	TheTextureManager->InitTexture("TESR_SMAA_Edges", &Textures.SMAA_Edges_Texture, &Textures.SMAA_Edges_Surface, width, height, D3DFMT_A8R8G8B8);
-	TheTextureManager->InitTexture("TESR_SMAA_Blend", &Textures.SMAA_Blend_Texture, &Textures.SMAA_Blend_Surface, width, height, D3DFMT_A8R8G8B8);
+        TheTextureManager->InitTexture("TESR_SMAA_Edges", &Textures.SMAA_Edges_Texture, &Textures.SMAA_Edges_Surface, width, height, D3DFMT_A8R8G8B8);
+        TheTextureManager->InitTexture("TESR_SMAA_Blend", &Textures.SMAA_Blend_Texture, &Textures.SMAA_Blend_Surface, width, height, D3DFMT_A8R8G8B8);
+        TextureManager::RegisterBridgeRenderTarget("TESR_SMAA_Edges",
+                &Textures.SMAA_Edges_Texture,
+                &Textures.SMAA_Edges_Surface,
+                TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+        TextureManager::RegisterBridgeRenderTarget("TESR_SMAA_Blend",
+                &Textures.SMAA_Blend_Texture,
+                &Textures.SMAA_Blend_Surface,
+                TR_BRIDGE_RT_USAGE_COLOR_BIT | TR_BRIDGE_RT_USAGE_SAMPLED_BIT);
+        TextureManager::PublishBridgeState();
 };
 
 void SMAAEffect::UpdateSettings() {

@@ -53,20 +53,24 @@ HMODULE LoadInteropModule()
         nullptr,
     };
 
-    for (const wchar_t* name : moduleNames)
+    for (const wchar_t* const* it = moduleNames; *it != nullptr; ++it)
     {
-        if (!name)
-        {
-            break;
-        }
+        const wchar_t* name = *it;
 
         HMODULE module = LoadLibraryW(name);
         if (module)
         {
+            Logger::Log("[TESR][Interop] Loaded interop module");
             return module;
+        }
+        else
+        {
+            DWORD err = GetLastError();
+            Logger::Log("[TESR][Interop] Failed to load interop module '%S' (error %lu)", name, err);
         }
     }
 
+    Logger::Log("[TESR][Interop] No interop module could be loaded");
     return nullptr;
 }
 #else
@@ -100,6 +104,7 @@ void ResolveDispatch(DxvkInteropDispatch& dispatch)
 {
     if (dispatch.initialized)
     {
+        Logger::Log("[TESR][Interop] Dispatch initialized ");
         return;
     }
     dispatch.initialized = true;
@@ -108,6 +113,7 @@ void ResolveDispatch(DxvkInteropDispatch& dispatch)
     dispatch.module = LoadInteropModule();
     if (!dispatch.module)
     {
+        Logger::Log("[TESR][Interop] No interop module found ");
         return;
     }
 
@@ -167,6 +173,7 @@ bool DxvkInterop_IsAvailable()
     ResolveDispatch(dispatch);
     if (!dispatch.available)
     {
+        Logger::Log("[TESR][Interop] Dispatch unavailable ");
         return false;
     }
 

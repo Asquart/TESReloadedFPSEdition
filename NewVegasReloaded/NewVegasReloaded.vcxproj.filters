@@ -47,19 +47,16 @@
     <Filter Include="Shared\Bridge">
       <UniqueIdentifier>{4e5f4ff5-7cf2-4b98-971e-e8519292236f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="lib\toml11">
+      <UniqueIdentifier>{2d4949ab-327c-460a-8d0d-eff7ca47e976}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib\toml11\toml">
+      <UniqueIdentifier>{9aaab872-ebdc-4b19-a995-9af8ff51b877}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
       <Filter>Main</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Shared\Bridge\Bridge.h">
-      <Filter>Shared\Bridge</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Shared\Bridge\BridgeExports.h">
-      <Filter>Shared\Bridge</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Shared\Bridge\DXVKInterop.h">
-      <Filter>Shared\Bridge</Filter>
     </ClInclude>
     <ClInclude Include="..\src\core\Device\Device.h">
       <Filter>Core\Device</Filter>
@@ -327,6 +324,78 @@
     </ClInclude>
     <ClInclude Include="..\src\effects\SMAA.h">
       <Filter>Effects</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml.hpp">
+      <Filter>lib\toml11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\color.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\combinator.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\comments.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\datetime.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\exception.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\from.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\get.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\into.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\lexer.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\literal.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\macros.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\parser.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\region.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\result.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\serializer.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\source_location.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\storage.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\string.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\traits.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\types.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\utility.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\value.hpp">
+      <Filter>lib\toml11\toml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\toml11\toml\version.hpp">
+      <Filter>lib\toml11\toml</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
