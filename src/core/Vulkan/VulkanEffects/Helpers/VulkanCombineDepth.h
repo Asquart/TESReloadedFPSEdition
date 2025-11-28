@@ -55,8 +55,6 @@ protected:
     virtual void CreateInteropTextures() override;
 
 private:
-    // Internal helpers
-    void RunCombinePass();
     void RecreateCombinedSurfaceIfNeeded(uint32_t Width, uint32_t Height);
 
     // Push constants layout matching CombineDepth.comp.glsl
