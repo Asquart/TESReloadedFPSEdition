@@ -41,6 +41,15 @@
     <Filter Include="NewVegas\nvse">
       <UniqueIdentifier>{3aba0770-a14b-4c4a-96eb-8afda7d52f08}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Core\Vulkan">
+      <UniqueIdentifier>{d49057e5-0236-4462-ad11-cd98808288d3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Vulkan\VulkanEffects">
+      <UniqueIdentifier>{b0eb9635-17f8-49dd-a3a4-f9cea6974130}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Vulkan\VulkanEffects\Helpers">
+      <UniqueIdentifier>{c2e3416f-4249-4b78-84af-bd438f791061}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -313,11 +322,29 @@
     <ClInclude Include="..\src\effects\SMAA.h">
       <Filter>Effects</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\core\TestVkShader.h">
-      <Filter>Core</Filter>
+    <ClInclude Include="..\src\core\Vulkan\VulkanInteropManager.h">
+      <Filter>Core\Vulkan</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\core\VkDispatch.h">
-      <Filter>Core</Filter>
+    <ClInclude Include="..\src\core\Vulkan\VulkanFunctionsHooks.h">
+      <Filter>Core\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\core\Vulkan\VulkanContext.h">
+      <Filter>Core\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffect.h">
+      <Filter>Core\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffectsManager.h">
+      <Filter>Core\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffects\VulkanAO.h">
+      <Filter>Core\Vulkan\VulkanEffects</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanCombineDepth.h">
+      <Filter>Core\Vulkan\VulkanEffects\Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\core\Vulkan\VulkanGlobalResources.h">
+      <Filter>Core\Vulkan</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -552,11 +579,29 @@
     <ClCompile Include="..\src\effects\SunShadows.cpp">
       <Filter>Effects</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\core\TestVkShader.cpp">
-      <Filter>Core</Filter>
+    <ClCompile Include="..\src\core\Vulkan\VulkanInteropManager.cpp">
+      <Filter>Core\Vulkan</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\core\VkDispatch.cpp">
-      <Filter>Core</Filter>
+    <ClCompile Include="..\src\core\Vulkan\VulkanFunctionsHooks.cpp">
+      <Filter>Core\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\Vulkan\VulkanContext.cpp">
+      <Filter>Core\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffect.cpp">
+      <Filter>Core\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffectsManager.cpp">
+      <Filter>Core\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffects\VulkanAO.cpp">
+      <Filter>Core\Vulkan\VulkanEffects</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanCombineDepth.cpp">
+      <Filter>Core\Vulkan\VulkanEffects\Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core\Vulkan\VulkanGlobalResources.cpp">
+      <Filter>Core\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

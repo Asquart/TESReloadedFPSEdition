@@ -1,24 +1,24 @@
-CommandManager*		TheCommandManager	= NULL;
-SettingManager*		TheSettingManager	= NULL;
-ShaderManager*		TheShaderManager	= NULL;
-TextureManager*		TheTextureManager	= NULL;
-RenderManager*		TheRenderManager	= NULL;
-FrameRateManager*	TheFrameRateManager = NULL;
-GameEventManager*	TheGameEventManager = NULL;
-GameMenuManager*	TheGameMenuManager	= NULL;
-ShadowManager*		TheShadowManager	= NULL;
-CameraManager*		TheCameraManager	= NULL;
-BinkManager*		TheBinkManager		= NULL;
-TestVkShader*		TheVulkanTestShader = NULL;
+CommandManager*				TheCommandManager	= NULL;
+SettingManager*				TheSettingManager	= NULL;
+ShaderManager*				TheShaderManager	= NULL;
+TextureManager*				TheTextureManager	= NULL;
+RenderManager*				TheRenderManager	= NULL;
+FrameRateManager*			TheFrameRateManager = NULL;
+GameEventManager*			TheGameEventManager = NULL;
+GameMenuManager*			TheGameMenuManager	= NULL;
+ShadowManager*				TheShadowManager	= NULL;
+CameraManager*				TheCameraManager	= NULL;
+BinkManager*				TheBinkManager		= NULL;
+FVulkanEffectsManager*		TheVulkanEffectsManager = NULL;
 
-Main*					Global			 = NULL;
-TES*					Tes				 = NULL;
-PlayerCharacter*		Player			 = NULL;
-SceneGraph*				WorldSceneGraph  = NULL;
-MainDataHandler*		DataHandler		 = NULL;
-MenuInterfaceManager*	InterfaceManager = NULL;
-QueuedModelLoader*		ModelLoader		 = NULL;
-ShadowSceneNode*		SceneNode		 = NULL;
+Main*						Global			 = NULL;
+TES*						Tes				 = NULL;
+PlayerCharacter*			Player			 = NULL;
+SceneGraph*					WorldSceneGraph  = NULL;
+MainDataHandler*			DataHandler		 = NULL;
+MenuInterfaceManager*		InterfaceManager = NULL;
+QueuedModelLoader*			ModelLoader		 = NULL;
+ShadowSceneNode*			SceneNode		 = NULL;
 
 void InitializeManagers() {
 	TextureManager::Initialize();

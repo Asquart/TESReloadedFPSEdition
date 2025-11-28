@@ -11,7 +11,7 @@ class GameEventManager; extern GameEventManager*	TheGameEventManager;
 class ShadowManager;	extern ShadowManager*		TheShadowManager;
 class CameraManager;	extern CameraManager*		TheCameraManager;
 class BinkManager;		extern BinkManager*			TheBinkManager;
-class TestVkShader; extern TestVkShader* TheVulkanTestShader;
+class FVulkanEffectsManager; extern FVulkanEffectsManager* TheVulkanEffectsManager;
 
 class Main;					extern Main*					Global;
 class TES;					extern TES*						Tes;
@@ -35,6 +35,6 @@ class ShadowSceneNode;		extern ShadowSceneNode*			SceneNode;
 #include "../Core/ShadowManager.h"
 #include "../Core/CameraManager.h"
 #include "../Core/BinkManager.h"
-#include "../Core/TestVkShader.h"
+#include "../Core/Vulkan/VulkanEffectsManager.h"
 
 void InitializeManagers();

@@ -1,7 +1,8 @@
 #pragma once
 
 #include "../../core/RenderManager.h"
-#include "../../core/TestVkShader.h"
+#include "../../core/Vulkan/VulkanEffectsManager.h"
+#include "../../core/Vulkan/VulkanEffects/Helpers/VulkanCombineDepth.h"
 
 void (__thiscall* Render)(Main*, BSRenderedTexture*, int, int) = (void (__thiscall*)(Main*, BSRenderedTexture*, int, int))Hooks::Render;
 void __fastcall RenderHook(Main* This, UInt32 edx, BSRenderedTexture* RenderedTexture, int Arg2, int Arg3) {
@@ -73,7 +74,10 @@ HRESULT __fastcall SetSamplerStateHook(NiDX9RenderState* This, UInt32 edx, UInt3
 void (__thiscall* RenderWorldSceneGraph)(Main*, Sun*, UInt8, UInt8, UInt8) = (void (__thiscall*)(Main*, Sun*, UInt8, UInt8, UInt8))Hooks::RenderWorldSceneGraph;
 void __fastcall RenderWorldSceneGraphHook(Main* This, UInt32 edx, Sun* SkySun, UInt8 IsFirstPerson, UInt8 WireFrame, UInt8 Arg4) {
 	(*RenderWorldSceneGraph)(This, SkySun, IsFirstPerson, WireFrame, Arg4);
-	if (!InterfaceManager->getIsMenuOpen()) TheRenderManager->ResolveDepthBuffer(TheTextureManager->DepthTexture); // disable updating the world buffer when pipboy is out
+	if (!InterfaceManager->getIsMenuOpen())
+	{
+		TheRenderManager->ResolveDepthBuffer(TheTextureManager->DepthTexture); // disable updating the world buffer when pipboy is out
+	}
 
 	if (!IsFirstPerson) {
 		// clear the viewmodel depth buffer
@@ -126,21 +130,29 @@ float __fastcall GetWaterHeightLODHook(TESWorldSpace* This, UInt32 edx) {
 }
 
 void(__cdecl* ProcessImageSpaceShaders)(NiDX9Renderer*, BSRenderedTexture*, BSRenderedTexture*) = (void(__cdecl*)(NiDX9Renderer*, BSRenderedTexture*, BSRenderedTexture*))Hooks::ProcessImageSpaceShaders;
-void __cdecl ProcessImageSpaceShadersHook(NiDX9Renderer* Renderer, BSRenderedTexture* SourceTarget, BSRenderedTexture* DestinationTarget) {
-
+void __cdecl ProcessImageSpaceShadersHook(
+	NiDX9Renderer* Renderer,
+	BSRenderedTexture* SourceTarget,
+	BSRenderedTexture* DestinationTarget)
+{
 	IDirect3DDevice9* Device = TheRenderManager->device;
 	NiDX9RenderState* RenderState = TheRenderManager->renderState;
-	IDirect3DSurface9* GameSurface = NULL;
-	IDirect3DSurface9* OutputSurface = NULL;
-	
+	IDirect3DSurface9* GameSurface = nullptr;
+	IDirect3DSurface9* OutputSurface = nullptr;
+
 	TheRenderManager->UpdateSceneCameraData();
 	TheRenderManager->SetupSceneCamera();
 	TheShaderManager->UpdateConstants();
 
 	if (TheSettingManager->SettingsMain.Main.RenderPreTonemapping) {
-		SourceTarget->GetD3DTexture(0)->GetSurfaceLevel(0, &GameSurface); // get the surface from the game render target
 
-		// Disable render state settings that create artefacts
+		// 1) Get game’s RT surface (engine-owned, NOT interop)
+		SourceTarget->GetD3DTexture(0)->GetSurfaceLevel(0, &GameSurface);
+
+		// 3) Copy game RT - our DXVK-compatible RT
+		//Device->StretchRect(GameSurface, nullptr, TheVulkanTestShader->GInteropSurface, nullptr, D3DTEXF_POINT);
+
+		// 4) Usual NVR state setup
 		RenderState->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE, RenderStateArgs);
 		RenderState->SetRenderState(D3DRS_ZWRITEENABLE, D3DZB_FALSE, RenderStateArgs);
 		RenderState->SetRenderState(D3DRS_STENCILENABLE, D3DZB_FALSE, RenderStateArgs);
@@ -156,58 +168,31 @@ void __cdecl ProcessImageSpaceShadersHook(NiDX9Renderer* Renderer, BSRenderedTex
 		RenderState->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE, RenderStateArgs);
 		RenderState->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE, RenderStateArgs);
 		RenderState->SetRenderState(D3DRS_NORMALIZENORMALS, D3DZB_FALSE, RenderStateArgs);
-		RenderState->SetRenderState(D3DRS_POINTSIZE, 810365505, RenderStateArgs); // fix flickering linked to alpha somehow
+		RenderState->SetRenderState(D3DRS_POINTSIZE, 810365505, RenderStateArgs);
 
+		// 5) Let NVR do any pre-tonemap FX (still on the real GameSurface if you like)
 		TheShaderManager->RenderEffectsPreTonemapping(GameSurface);
+		TheVulkanEffectsManager->RenderPreTonemapping(GameSurface);
 	}
 
+	// original pipeline
 	ProcessImageSpaceShaders(Renderer, SourceTarget, DestinationTarget);
 
 	if (!DestinationTarget && TheRenderManager->currentRTGroup) {
 		OutputSurface = TheRenderManager->currentRTGroup->RenderTargets[0]->data->Surface;
-		if (!TheSettingManager->SettingsMain.Main.RenderPreTonemapping) TheShaderManager->RenderEffectsPreTonemapping(OutputSurface);
-		TheShaderManager->RenderEffects(OutputSurface);
-		TheRenderManager->CheckAndTakeScreenShot(OutputSurface, TheSettingManager->SettingsMain.Main.HDRScreenshot);
-	}
-
-	
-	{
-
-		//VulkanImageData NewImageData{};
-		//vkTex->GetVulkanImageInfo(&NewImageData.Image, &NewImageData.ImageLayout, &NewImageData.ImageCreateInfo);
-
-		//if (NewImageData.Image != VK_NULL_HANDLE)
+		if (!TheSettingManager->SettingsMain.Main.RenderPreTonemapping)
 		{
-			//dxvk::Com<ID3D9VkInteropDevice> vkDevice;
-			//Device->QueryInterface(__uuidof(ID3D9VkInteropDevice), (void**)&vkDevice);
-
-			//VulkanDeviceData DeviceData;
-			//VulkanQueueData QueueData;
-
-			//vkDevice->GetVulkanHandles(&TheRenderManager->VkDeviceData.Instance, &TheRenderManager->VkDeviceData.PhysicalDevice, &TheRenderManager->VkDeviceData.Device);
-			//vkDevice->GetVulkanHandles(&DeviceData.Instance, &DeviceData.PhysicalDevice, &DeviceData.Device);
-			//vkDevice->GetSubmissionQueue(&QueueData.Queue, &QueueData.QueueIndex, &QueueData.FamilyIndex);
-
-			
-
-			// run Vulkan compute pass
-
-			Logger::Log("Running Test vulkan compute");
-			TheVulkanTestShader->RunCompute(GameSurface);
-			// run Vulkan compute pass
+			TheShaderManager->RenderEffectsPreTonemapping(OutputSurface);
 		}
-	}
-	if (GameSurface) {
-		// DEBUG: blit to backbuffer
-		//IDirect3DSurface9* backBuffer = nullptr;
-		//Device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer);
-		//if (backBuffer) {
-		//	Device->StretchRect(GameSurface, nullptr, backBuffer, nullptr, D3DTEXF_POINT);
-		//	backBuffer->Release();
-		//}
 
-		GameSurface->Release();
+		TheShaderManager->RenderEffects(OutputSurface);
+		TheVulkanEffectsManager->RenderPostTonemapping(OutputSurface);
+		TheRenderManager->CheckAndTakeScreenShot(OutputSurface,
+			TheSettingManager->SettingsMain.Main.HDRScreenshot);
 	}
+
+	if (GameSurface)
+		GameSurface->Release();
 }
 
 static void RenderMainMenuMovie() { 

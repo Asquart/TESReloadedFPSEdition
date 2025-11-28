@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -133,8 +133,14 @@
     <ClCompile Include="..\src\core\ShadowManager.cpp" />
     <ClCompile Include="..\src\core\TextureManager.cpp" />
     <ClCompile Include="..\src\core\TextureRecord.cpp" />
-    <ClCompile Include="..\src\core\TestVkShader.cpp" />
-    <ClCompile Include="..\src\core\VkDispatch.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanContext.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffect.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffectsManager.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanCombineDepth.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffects\VulkanAO.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanFunctionsHooks.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanGlobalResources.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanInteropManager.cpp" />
     <ClCompile Include="..\src\effects\AmbientOcclusion.cpp" />
     <ClCompile Include="..\src\effects\Animator.cpp" />
     <ClCompile Include="..\src\effects\AvgLuma.cpp" />
@@ -212,8 +218,14 @@
     <ClInclude Include="..\src\core\ShadowManager.h" />
     <ClInclude Include="..\src\core\TextureManager.h" />
     <ClInclude Include="..\src\core\TextureRecord.h" />
-    <ClInclude Include="..\src\core\TestVkShader.h" />
-    <ClInclude Include="..\src\core\VkDispatch.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanContext.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffect.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffectsManager.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanCombineDepth.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffects\VulkanAO.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanFunctionsHooks.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanGlobalResources.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanInteropManager.h" />
     <ClInclude Include="..\src\effects\AmbientOcclusion.h" />
     <ClInclude Include="..\src\effects\Animator.h" />
     <ClInclude Include="..\src\effects\AvgLuma.h" />

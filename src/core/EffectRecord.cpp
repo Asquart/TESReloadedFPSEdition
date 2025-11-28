@@ -355,6 +355,7 @@ void EffectRecord::Render(IDirect3DDevice9* Device, IDirect3DSurface9* RenderTar
 		return; // skip rendering of disabled effects
 	}
 
+	//gQueryStart->Issue(D3DISSUE_END);
 	auto timer = TimeLogger();
 	if (SourceBuffer) Device->StretchRect(RenderTarget, NULL, SourceBuffer, NULL, D3DTEXF_LINEAR);
 

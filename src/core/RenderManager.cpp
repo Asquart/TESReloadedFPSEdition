@@ -1,4 +1,5 @@
 #include "RenderManager.h"
+#include "Vulkan/VulkanEffectsManager.h"
 
 #define RESZ_CODE 0x7FA05000
 
@@ -61,27 +62,14 @@ bool RenderManager::IsReversedDepth() {
 	return NiDX9Renderer::GetSingleton()->m_fZClear < 1.0f;
 }
 
-void RenderManager::TryCacheVulkanDevice()
+void RenderManager::TryInitVulkanLayer()
 {
 	if (!DXVK)
 	{
 		return;
 	}
-	if (!TheVulkanTestShader)
-	{
-		TestVkShader::Initialize();
-	}
-	if (TheVulkanTestShader)
-	{
-		Logger::Log("TestVulkanShader initialized");
-	}
-	else
-	{
-		Logger::Log("TestVulkanShader is not initialized - we're cooked");
-	}
-
-	Logger::Log("Got vulkan handles and submission queue");
-	TheVulkanTestShader->InitCompute(device);
+	TheVulkanEffectsManager = new FVulkanEffectsManager();
+	TheVulkanEffectsManager->Initialize(device);
 }
 
 void RenderManager::UpdateSceneCameraData() {
@@ -312,7 +300,10 @@ void RenderManager::Initialize() {
 	if (RESZ) {
 		Logger::Log("AMD/Intel detected: RESZ supported.");
 		DXVK = getDXVKPresent();
-		if (DXVK) Logger::Log("DXVK found");
+		if (DXVK)
+		{
+			Logger::Log("DXVK found");
+		}
 	}
 	else if (NvAPI_Initialize() == NVAPI_OK)
 		Logger::Log("NVIDIA detected: NVAPI supported.");
@@ -320,8 +311,6 @@ void RenderManager::Initialize() {
 		Logger::Log("ERROR: Cannot initialize the render manager. Graphics device not supported.");
 	if (TheSettingManager->SettingsMain.Main.AnisotropicFilter >= 2) device->SetSamplerState(0, D3DSAMP_MAXANISOTROPY, TheSettingManager->SettingsMain.Main.AnisotropicFilter);
 	BackBuffer = CreateHDRRenderTarget();
-
-	TryCacheVulkanDevice();
 }
 
 void RenderManager::ResolveDepthBuffer(IDirect3DTexture9* Buffer) {
