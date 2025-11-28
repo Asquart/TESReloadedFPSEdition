@@ -26,26 +26,40 @@ public:
     virtual void Initialize();
 
     // Different phases if you need them
-    virtual void RenderPreTonemapping(IDirect3DSurface9* SceneColor) {}
+    virtual void SubmitRendering() {}
 
-    virtual void RenderPostTonemapping(IDirect3DSurface9* SceneColor) {}
+    virtual void CompleteRendering(IDirect3DSurface9* SceneColor) {}
 
     virtual void OnGameBuffersUpdated();
 
     const char* SpirvPath = "";
 
 protected:
-    std::vector<uint32_t> SpirvShader;
-    std::vector<uint32_t> LoadSpirv(const char* path);
+
+    // Vulkan pipeline objects
+    VkShaderModule        EffectShaderModule = VK_NULL_HANDLE;
+    VkPipelineLayout      EffectPipelineLayout = VK_NULL_HANDLE;
+    VkPipeline            EffectPipeline = VK_NULL_HANDLE;
+    VkDescriptorSetLayout EffectDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorPool      EffectDescriptorPool = VK_NULL_HANDLE;
+    VkDescriptorSet       EffectDescriptorSet = VK_NULL_HANDLE;
+    VkPushConstantRange   EffectPushConstantRange{};
+    VkDescriptorSetLayoutCreateInfo EffectDescriptorSetLayoutCreateInfo;
+    VkCommandBuffer EffectCommandBuffer = VK_NULL_HANDLE;
+    VkFence EffectFence = VK_NULL_HANDLE;
+    bool bFenceInUse = false;
 
     virtual void CreateResources();
     virtual void DestroyResources();
 
-    virtual void UpdateSettingsFromNvr() = 0;
-    virtual void CreateShaderModule() = 0;
+    virtual void UpdateSettingsFromNvr() {};
+    virtual void CreateShaderModule();
     virtual void CreatePipeline() = 0;
     virtual void CreateDescriptorSets() = 0;
     virtual void CreateInteropTextures() = 0;
+    virtual void CreateCommandBuffer();
+    virtual void CreateFence();
+    virtual void LoadShaderModule();
 };
 
 struct FVulkanEffectInfo

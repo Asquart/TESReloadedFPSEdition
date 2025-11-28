@@ -13,8 +13,32 @@ if (!TheRenderManager->DXVK)    \
     return;                     \
 }                               \
 
-#define DEBUG \
-TheSettingManager->SettingsMain.Develop.DebugMode
+#define DEBUG TheSettingManager->SettingsMain.Develop.DebugMode
+
+#define VULKAN_CONTEXT TheVulkanEffectsManager->VulkanContext
+
+#define TRY_APPLY_FENCE(InVulkanEffect)\
+    if (InVulkanEffect->EffectFence != VK_NULL_HANDLE) \
+    { \
+        p_vkResetFences(VULKAN_CONTEXT.Device, 1, &InVulkanEffect->EffectFence); \
+        InVulkanEffect->bFenceInUse = true; \
+    } \
+
+#define TRY_DEBUG_END_FENCE(InVulkanEffect)\
+    if (DEBUG) \
+    { \
+        if (InVulkanEffect->EffectFence != VK_NULL_HANDLE && InVulkanEffect->bFenceInUse) \
+        { \
+            p_vkWaitForFences(VULKAN_CONTEXT.Device, 1, &InVulkanEffect->EffectFence, VK_TRUE, UINT64_MAX); \
+            InVulkanEffect->bFenceInUse = false; \
+        } \
+    } \
+
+#define ENSURE_END_FENCE(InVulkanEffect)\
+    if ((InVulkanEffect->EffectFence) != VK_NULL_HANDLE && (InVulkanEffect->bFenceInUse)) { \
+            p_vkWaitForFences(VULKAN_CONTEXT.Device, 1, &(InVulkanEffect->EffectFence), VK_TRUE, UINT64_MAX); \
+            (InVulkanEffect->bFenceInUse) = false;                 \
+        }     
 
 struct FVulkanContext
 {
@@ -39,8 +63,6 @@ struct FVulkanContext
     VkSampler SamplerLinearRepeat = VK_NULL_HANDLE;
 
     // GPU timing
-    VkCommandBuffer     CommandBuffer = VK_NULL_HANDLE;
-    VkFence             SynchronizationFence = VK_NULL_HANDLE;
     VkQueryPool      QueryPool = VK_NULL_HANDLE;
     float            TimestampPeriod = 0.0f;
 
@@ -54,39 +76,10 @@ struct FVulkanContext
 
     uint32_t FindMemoryType(uint32_t TypeBits, VkMemoryPropertyFlags Properties) const;
 
+    void TryStartFence(VkCommandBuffer InCommandBuffer);
+    void TryEndFence(VkCommandBuffer InCommandBuffer);
+
 private:
     void InitSamplers();
     void InitPools();
-    void InitTiming();
-    void ShutdownTiming();
-
-    void BeginComputeWithTimestamp();
-    void EndComputeAndSubmit();
-    friend struct FScopedComputePass;
-};
-
-struct FScopedComputePass
-{
-    FVulkanContext* Ctx = nullptr;
-    bool              Active = false;
-
-    FScopedComputePass(FVulkanContext* InCtx)
-        : Ctx(InCtx)
-    {
-        if (Ctx) {
-            Ctx->BeginComputeWithTimestamp();
-            Active = true;
-        }
-    }
-
-    ~FScopedComputePass()
-    {
-        if (Active && Ctx) {
-            Ctx->EndComputeAndSubmit();
-        }
-    }
-
-    // non-copyable
-    FScopedComputePass(const FScopedComputePass&) = delete;
-    FScopedComputePass& operator=(const FScopedComputePass&) = delete;
 };

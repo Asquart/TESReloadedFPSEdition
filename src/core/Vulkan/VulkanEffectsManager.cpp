@@ -51,8 +51,13 @@ void FVulkanEffectsManager::RenderPreTonemapping(IDirect3DSurface9* InSceneColor
 
     for (auto& EffectPair : EffectsPreTonemap)
     {
-        Logger::Log("Rendering effect %s", EffectPair.first);
-        EffectPair.second->RenderPreTonemapping(InSceneColor);
+        Logger::Log("Submitting effect %s", EffectPair.first);
+        EffectPair.second->SubmitRendering();
+    }
+    for (auto& EffectPair : EffectsPreTonemap)
+    {
+        Logger::Log("Completing effect %s", EffectPair.first);
+        EffectPair.second->CompleteRendering(InSceneColor);
     }
 }
 
@@ -60,7 +65,7 @@ void FVulkanEffectsManager::RenderPostTonemapping(IDirect3DSurface9* InSceneColo
 {
     DXVK_CheckReturn()
     for (auto& EffectPair : EffectsPostTonemap)
-        EffectPair.second->RenderPostTonemapping(InSceneColor);
+        EffectPair.second->CompleteRendering(InSceneColor);
 }
 
 FVulkanInteropSurface* FVulkanEffectsManager::GetDepthSurface()

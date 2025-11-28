@@ -55,14 +55,14 @@ void FVulkanGlobalResources::UpdatePerFrame()
     VkWriteDescriptorSet writes[2] = {};
 
     writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[0].dstSet = GlobalSets.GlobalFrameSet;
+    writes[0].dstSet = GlobalSets.GlobalFrameDescriptorSet;
     writes[0].dstBinding = 0; // gDepth
     writes[0].descriptorCount = 1;
     writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     writes[0].pImageInfo = &depthInfo;
 
     writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[1].dstSet = GlobalSets.GlobalFrameSet;
+    writes[1].dstSet = GlobalSets.GlobalFrameDescriptorSet;
     writes[1].dstBinding = 1; // GlobalFrameUBO
     writes[1].descriptorCount = 1;
     writes[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -176,10 +176,10 @@ void FVulkanGlobalResources::CreateFrameSet()
     setAlloc.descriptorSetCount = 1;
     setAlloc.pSetLayouts = &GlobalSets.GlobalFrameSetLayout;
 
-    vr = p_vkAllocateDescriptorSets(Device, &setAlloc, &GlobalSets.GlobalFrameSet);
+    vr = p_vkAllocateDescriptorSets(Device, &setAlloc, &GlobalSets.GlobalFrameDescriptorSet);
     if (vr != VK_SUCCESS) {
         Logger::Log("CreateFrameSet: vkAllocateDescriptorSets failed (%d)", vr);
-        GlobalSets.GlobalFrameSet = VK_NULL_HANDLE;
+        GlobalSets.GlobalFrameDescriptorSet = VK_NULL_HANDLE;
         return;
     }
 
@@ -213,5 +213,5 @@ void FVulkanGlobalResources::DestroyFrameSet()
         GlobalSets.GlobalFrameSetLayout = VK_NULL_HANDLE;
     }
 
-    GlobalSets.GlobalFrameSet = VK_NULL_HANDLE;
+    GlobalSets.GlobalFrameDescriptorSet = VK_NULL_HANDLE;
 }

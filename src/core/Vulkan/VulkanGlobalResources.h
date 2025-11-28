@@ -26,7 +26,7 @@ struct FVulkanGlobalSets
 {
     // FRAME SET = set=0
     VkDescriptorSetLayout GlobalFrameSetLayout = VK_NULL_HANDLE;
-    VkDescriptorSet       GlobalFrameSet = VK_NULL_HANDLE;
+    VkDescriptorSet       GlobalFrameDescriptorSet = VK_NULL_HANDLE;
     VkDescriptorPool      GlobalFramePool = VK_NULL_HANDLE;
 
     VkBuffer              FrameUBO = VK_NULL_HANDLE;
@@ -47,7 +47,7 @@ public:
     void Shutdown();
     void UpdatePerFrame();
 
-    FVulkanGlobalSets& GetSets() { return GlobalSets; }
+    FVulkanGlobalSets& GetGlobalDescriptorSets() { return GlobalSets; }
     FGlobalFrameUBO& GetUBO() { return GlobalSets.CpuUBO; }
 
 private:
