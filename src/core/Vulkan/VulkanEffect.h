@@ -53,7 +53,6 @@ protected:
     virtual void DestroyResources();
 
     virtual void UpdateSettingsFromNvr() {};
-    virtual void CreateShaderModule();
     virtual void CreatePipeline() = 0;
     virtual void CreateDescriptorSets() = 0;
     virtual void CreateInteropTextures() = 0;

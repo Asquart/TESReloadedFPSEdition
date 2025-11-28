@@ -17,7 +17,7 @@ void IVulkanEffect::OnGameBuffersUpdated()
 
 void IVulkanEffect::CreateResources()
 {
-    CreateShaderModule();
+    LoadShaderModule();
     CreateInteropTextures();
     CreatePipeline();
     CreateDescriptorSets();
