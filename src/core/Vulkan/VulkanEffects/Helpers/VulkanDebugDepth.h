@@ -2,18 +2,7 @@
 
 #include "../../VulkanEffect.h"
 
-struct FSimpleInteropSurface
-{
-    dxvk::Com<IDirect3DSurface9> Surface;
-    dxvk::Com<ID3D9VkInteropTexture> Interop;
-
-    VkImage     Image = VK_NULL_HANDLE;
-    VkImageView View = VK_NULL_HANDLE;
-};
-
-// Combines world + viewmodel depth into a single buffer using CombineDepth.comp.spv
-// and (optionally) can debug-blit it to the scene color.
-class FVulkanCombineDepthEffect : public IVulkanEffect
+class FVulkanDebugDepthEffect : public IVulkanEffect
 {
 public:
     virtual const char* GetName() const override
@@ -21,7 +10,7 @@ public:
         return "CombineDepth";
     }
 
-    FVulkanCombineDepthEffect();
+    FVulkanDebugDepthEffect();
 
     // Depth should be ready before AO etc., so PreTonemap is reasonable
     virtual EVulkanEffectPhase GetPhase() const override

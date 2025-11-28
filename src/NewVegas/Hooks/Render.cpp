@@ -2,7 +2,6 @@
 
 #include "../../core/RenderManager.h"
 #include "../../core/Vulkan/VulkanEffectsManager.h"
-#include "../../core/Vulkan/VulkanEffects/Helpers/VulkanCombineDepth.h"
 
 void (__thiscall* Render)(Main*, BSRenderedTexture*, int, int) = (void (__thiscall*)(Main*, BSRenderedTexture*, int, int))Hooks::Render;
 void __fastcall RenderHook(Main* This, UInt32 edx, BSRenderedTexture* RenderedTexture, int Arg2, int Arg3) {

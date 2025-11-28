@@ -136,7 +136,7 @@
     <ClCompile Include="..\src\core\Vulkan\VulkanContext.cpp" />
     <ClCompile Include="..\src\core\Vulkan\VulkanEffect.cpp" />
     <ClCompile Include="..\src\core\Vulkan\VulkanEffectsManager.cpp" />
-    <ClCompile Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanCombineDepth.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanDebugDepth.cpp" />
     <ClCompile Include="..\src\core\Vulkan\VulkanEffects\VulkanAO.cpp" />
     <ClCompile Include="..\src\core\Vulkan\VulkanFunctionsHooks.cpp" />
     <ClCompile Include="..\src\core\Vulkan\VulkanGlobalResources.cpp" />
@@ -221,7 +221,7 @@
     <ClInclude Include="..\src\core\Vulkan\VulkanContext.h" />
     <ClInclude Include="..\src\core\Vulkan\VulkanEffect.h" />
     <ClInclude Include="..\src\core\Vulkan\VulkanEffectsManager.h" />
-    <ClInclude Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanCombineDepth.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanDebugDepth.h" />
     <ClInclude Include="..\src\core\Vulkan\VulkanEffects\VulkanAO.h" />
     <ClInclude Include="..\src\core\Vulkan\VulkanFunctionsHooks.h" />
     <ClInclude Include="..\src\core\Vulkan\VulkanGlobalResources.h" />

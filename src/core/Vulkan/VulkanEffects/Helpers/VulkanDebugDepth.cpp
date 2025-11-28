@@ -1,16 +1,16 @@
-#include "VulkanCombineDepth.h"
+#include "VulkanDebugDepth.h"
 
 // If you use the factory macro:
-REGISTER_VULKAN_EFFECT(FVulkanCombineDepthEffect,
+REGISTER_VULKAN_EFFECT(FVulkanDebugDepthEffect,
     EVulkanEffectPhase::PreTonemap,
     3); // order: before AO etc.
 
-FVulkanCombineDepthEffect::FVulkanCombineDepthEffect()
+FVulkanDebugDepthEffect::FVulkanDebugDepthEffect()
 {
     SpirvPath = "Data\\Shaders\\NewVegasReloaded\\Vulkan\\Includes\\CombineDepth.comp.spv";
 }
 
-void FVulkanCombineDepthEffect::DestroyResources()
+void FVulkanDebugDepthEffect::DestroyResources()
 {
     DXVK_CheckReturn()
         IVulkanEffect::DestroyResources();
@@ -18,7 +18,7 @@ void FVulkanCombineDepthEffect::DestroyResources()
     TheVulkanEffectsManager->InteropManager.DestroySurface(OutputSurface);
 }
 
-void FVulkanCombineDepthEffect::CreatePipeline()
+void FVulkanDebugDepthEffect::CreatePipeline()
 {
     DXVK_CheckReturn()
 
@@ -74,7 +74,7 @@ void FVulkanCombineDepthEffect::CreatePipeline()
         "vkCreateComputePipelines(CombineDepth)");
 }
 
-void FVulkanCombineDepthEffect::CreateDescriptorSets()
+void FVulkanDebugDepthEffect::CreateDescriptorSets()
 {
     DXVK_CheckReturn()
 
@@ -103,7 +103,7 @@ void FVulkanCombineDepthEffect::CreateDescriptorSets()
         "vkAllocateDescriptorSets(CombineDepth)");
 }
 
-void FVulkanCombineDepthEffect::CreateInteropTextures()
+void FVulkanDebugDepthEffect::CreateInteropTextures()
 {
     DXVK_CheckReturn()
 
@@ -111,7 +111,7 @@ void FVulkanCombineDepthEffect::CreateInteropTextures()
     CreateOutputSurfaceIfNeeded(TheRenderManager->width, TheRenderManager->height);
 }
 
-void FVulkanCombineDepthEffect::CreateOutputSurfaceIfNeeded(uint32_t Width, uint32_t Height)
+void FVulkanDebugDepthEffect::CreateOutputSurfaceIfNeeded(uint32_t Width, uint32_t Height)
 {
     DXVK_CheckReturn()
 
@@ -147,7 +147,7 @@ void FVulkanCombineDepthEffect::CreateOutputSurfaceIfNeeded(uint32_t Width, uint
     );
 }
 
-void FVulkanCombineDepthEffect::SubmitRendering()
+void FVulkanDebugDepthEffect::SubmitRendering()
 {
     DXVK_CheckReturn();
 
@@ -249,7 +249,7 @@ void FVulkanCombineDepthEffect::SubmitRendering()
     TRY_DEBUG_END_FENCE(this)
 }
 
-void FVulkanCombineDepthEffect::CompleteRendering(IDirect3DSurface9* SceneColor)
+void FVulkanDebugDepthEffect::CompleteRendering(IDirect3DSurface9* SceneColor)
 {
     DXVK_CheckReturn();
     ENSURE_END_FENCE(this)

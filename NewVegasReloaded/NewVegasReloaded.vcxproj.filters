@@ -340,7 +340,7 @@
     <ClInclude Include="..\src\core\Vulkan\VulkanEffects\VulkanAO.h">
       <Filter>Core\Vulkan\VulkanEffects</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanCombineDepth.h">
+    <ClInclude Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanDebugDepth.h">
       <Filter>Core\Vulkan\VulkanEffects\Helpers</Filter>
     </ClInclude>
     <ClInclude Include="..\src\core\Vulkan\VulkanGlobalResources.h">
@@ -597,7 +597,7 @@
     <ClCompile Include="..\src\core\Vulkan\VulkanEffects\VulkanAO.cpp">
       <Filter>Core\Vulkan\VulkanEffects</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanCombineDepth.cpp">
+    <ClCompile Include="..\src\core\Vulkan\VulkanEffects\Helpers\VulkanDebugDepth.cpp">
       <Filter>Core\Vulkan\VulkanEffects\Helpers</Filter>
     </ClCompile>
     <ClCompile Include="..\src\core\Vulkan\VulkanGlobalResources.cpp">
