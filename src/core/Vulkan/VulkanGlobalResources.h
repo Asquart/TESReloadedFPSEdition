@@ -6,20 +6,52 @@
 struct alignas(16) FGlobalFrameUBO
 {
     // Matrices
-    float Projection[16];
-    float InvProjection[16];
-    float View[16];
-    float InvView[16];
+	float TESR_WorldTransform[16];
+	float TESR_ViewTransform[16];
+	float TESR_InvViewTransform[16];
+	float TESR_ProjectionTransform[16];
+	float TESR_InvProjectionTransform[16];
+	float TESR_WorldViewProjectionTransform[16];
+	float TESR_InvViewProjectionTransform[16];
+	float TESR_ViewProjectionTransform[16];
+	float TESR_OcclusionWorldViewProjTransform[16];
 
-    // Camera / Depth info
-    float DepthConstants[4];
-    float CameraData[4];
-    float CameraPosition[4];
+	// Light parameters
+	float TESR_LightPosition[4];
+	float TESR_LightColor[4];
+	float TESR_SpotLightPosition[4];
+	float TESR_SpotLightColor[4];
+	float TESR_SpotLightDirection[4];
+	float TESR_SpotLightToWorldTransform[16];
+	float TESR_ViewSpaceLightDir[4];
+	float TESR_ScreenSpaceLightDir[4];
 
-    // Expand later:
-    // float ScreenSize[4];
-    // float Jitter[4];
-    // float FrameTime[4];
+	// Depth parameters
+	float TESR_DepthConstants[4];
+	
+	// Camera parameters
+	float TESR_ReciprocalResolution[4];
+	float TESR_CameraForward[4];
+	float TESR_CameraData[4];
+	float TESR_CameraPosition[4];
+
+	// Game time
+	float TESR_GameTime[16];
+	
+	// Atmospheric parameters
+	float TESR_SunDirection[4];
+	float TESR_SunPosition[4];
+	float TESR_SunTiming[4];
+	float TESR_SunAmount[4];
+	float TESR_FogData[4];
+	float TESR_FogDistance[4];
+	float TESR_FogColor[4];
+	float TESR_SunColor[4];
+	float TESR_SunDiskColor[4];
+	float TESR_SunAmbient[4];
+	float TESR_SkyColor[4];
+	float TESR_SkyLowColor[4];
+	float TESR_HorizonColor[4];
 };
 
 struct FVulkanGlobalSets
@@ -53,7 +85,7 @@ public:
 private:
 
     FVulkanGlobalSets GlobalSets;
-
+    void UpdateCpuUboParams();
     void CreateFrameSet();
     void DestroyFrameSet();
 };

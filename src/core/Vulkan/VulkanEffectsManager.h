@@ -32,10 +32,10 @@ public:
     UINT ScreenWidth;
     UINT ScreenHeight;
 
+    FVulkanInteropSurface NormalsSurface {};
 private:
 
     FVulkanInteropSurface DepthSurface{};
-    FVulkanInteropSurface NormalsSurface {};
     FVulkanInteropSurface BlueNoiseSurface {};
 
     std::unordered_map<std::string, std::unique_ptr<IVulkanEffect>> EffectsPreTonemap;

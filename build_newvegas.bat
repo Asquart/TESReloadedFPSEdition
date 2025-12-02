@@ -26,13 +26,27 @@ xcopy "resource\%PROJECT%.dll.defaults.toml" "build\%PROJECT%\%FOLDER%\Plugins\"
 echo F|xcopy "resource\%PROJECT%.dll.defaults.toml" "build\%PROJECT%\%FOLDER%\Plugins\%PROJECT%.dll.toml" /y /d
 
 @REM Copy Shaders
-robocopy /mir .\src\hlsl\%GAME%\Shaders .\build\%PROJECT%\Shaders\%PROJECT%\Shaders
-robocopy /mir .\src\hlsl\%GAME%\Effects .\build\%PROJECT%\Shaders\%PROJECT%\Effects
+robocopy /mir ".\src\hlsl\%GAME%\Shaders" ".\build\%PROJECT%\Shaders\%PROJECT%\Shaders"
+robocopy /mir ".\src\hlsl\%GAME%\Effects" ".\build\%PROJECT%\Shaders\%PROJECT%\Effects"
 
 @REM Copy Textures
-robocopy /mir .\resource\Textures\ .\build\%PROJECT%\Textures\
+robocopy /mir ".\resource\Textures" ".\build\%PROJECT%\Textures"
+
+
+@REM Run SPIR-V builder
+".\src\hlsl\%GAME%\Vulkan\BuildSPIRV.exe"
+
+if %ERRORLEVEL% NEQ 0 (
+    echo BuildSPIRV.exe has failed. Deploy aborted.ffffff
+    PAUSE
+    exit /b %ERRORLEVEL%
+)
+
+@REM Copy Vulkan SPIR-V Shaders
+robocopy /mir ".\src\hlsl\%GAME%\Vulkan\BuiltSPIRVs" ".\build\%PROJECT%\Shaders\%PROJECT%\Vulkan"
 
 echo "No deploy stage."
+
 PAUSE
 
 @REM handle Robocopy weird error codes

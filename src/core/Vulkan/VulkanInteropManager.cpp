@@ -8,14 +8,14 @@ void FVulkanInteropManager::Shutdown()
 {
 }
 
-FVulkanInteropSurface* FVulkanInteropManager::GetOrCreateSurface(const std::string& Name, UINT Width, UINT Height, D3DFORMAT InFormat, bool bUseStorage)
+FVulkanInteropSurface* FVulkanInteropManager::GetOrCreateSurface(const std::string& Name, UINT Width, UINT Height, D3DFORMAT InFormat, bool bIsWriteable, VkImageLayout InLayout)
 {
     if (Surfaces.contains(Name) && Surfaces[Name].IsValid())
     {
         return &Surfaces[Name];
     }
     FVulkanInteropSurface NewSurface;
-    if (!CreateSurface(NewSurface, Width, Height, InFormat, bUseStorage))
+    if (!CreateSurface(NewSurface, Width, Height, InFormat, bIsWriteable, InLayout))
     {
         Logger::Log("GetOrCreateSurface could not create new surface, returning nullptr");
         return nullptr;
@@ -138,7 +138,8 @@ bool FVulkanInteropManager::CreateSurface(
     UINT InWidth,
     UINT InHeight,
     D3DFORMAT InFormat,
-    bool bUseStorage)
+    bool bIsWriteable,
+    VkImageLayout InLayout)
 {
     auto& VulkanContext = TheVulkanEffectsManager->VulkanContext;
     IDirect3DDevice9* D3D9 = TheVulkanEffectsManager->D3D9Device;
@@ -169,7 +170,7 @@ bool FVulkanInteropManager::CreateSurface(
     Out.Width = InWidth;
     Out.Height = InHeight;
     Out.Format = InFormat;
-    Out.bIsStorage = bUseStorage; // if you have this field
+    Out.bIsStorage = bIsWriteable; // if you have this field
 
     // Map D3D color formats to VkFormat (color-only helper)
     auto MapD3DColorFormatToVk = [](D3DFORMAT fmt) -> VkFormat
@@ -213,12 +214,12 @@ bool FVulkanInteropManager::CreateSurface(
         VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
         VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-    if (bUseStorage) {
+    if (bIsWriteable) {
         Desc.ImageUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
     }
 
     Logger::Log("CreateSurface: CreateImage WxH=%ux%u fmt=%d usage=0x%08X storage=%d",
-        InWidth, InHeight, InFormat, Desc.ImageUsage, bUseStorage ? 1 : 0);
+        InWidth, InHeight, InFormat, Desc.ImageUsage, bIsWriteable ? 1 : 0);
 
     dxvk::Com<IDirect3DResource9> Resource;
     HRESULT hr = VulkanContext.InteropDevice->CreateImage(&Desc, &Resource);
@@ -265,7 +266,7 @@ bool FVulkanInteropManager::CreateSurface(
     }
 
     Out.Image = Img;
-    Out.Layout = VK_IMAGE_LAYOUT_UNDEFINED; // we'll manage layout explicitly
+    Out.Layout = InLayout; // we'll manage layout explicitly
 
     // --- 4) Create image view with a *known* VkFormat ---
     VkFormat VkFmt = MapD3DColorFormatToVk(InFormat);
@@ -294,7 +295,7 @@ bool FVulkanInteropManager::CreateSurface(
         return false;
     }
 
-    Logger::Log("CreateSurface: OK, image=%p view=%p storage=%d", Out.Image, Out.View, bUseStorage ? 1 : 0);
+    Logger::Log("CreateSurface: OK, image=%p view=%p storage=%d", Out.Image, Out.View, bIsWriteable ? 1 : 0);
     return true;
 }
 
@@ -482,7 +483,7 @@ bool FVulkanInteropManager::WrapExistingTexture(
 bool FVulkanInteropManager::CreateSurfaceFromD3DTexture(
     FVulkanInteropSurface& Out,
     IDirect3DTexture9* InTexture,
-    bool bUseStorage)
+    bool bIsWriteable, VkImageLayout InLayout)
 {
     if (!InTexture ||
         !TheVulkanEffectsManager ||
@@ -507,7 +508,7 @@ bool FVulkanInteropManager::CreateSurfaceFromD3DTexture(
 
     Out.InteropTex = nullptr;
     Out.Image = VK_NULL_HANDLE;
-    Out.Layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    Out.Layout = InLayout;
     Out.CreateInfo = {};
     Out.Width = 0;
     Out.Height = 0;
@@ -602,7 +603,7 @@ bool FVulkanInteropManager::CreateSurfaceFromD3DTexture(
         VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     // Only allow STORAGE on color render targets
-    if (bUseStorage && !bIsDepthFormat) {
+    if (bIsWriteable && !bIsDepthFormat) {
         VkDesc.ImageUsage |= VK_IMAGE_USAGE_STORAGE_BIT;
     }
 

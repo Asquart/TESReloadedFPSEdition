@@ -42,7 +42,8 @@ public:
         UINT Width,
         UINT Height,
         D3DFORMAT InFormat,
-        bool bUseStorage);
+        bool bIsWriteable,
+        VkImageLayout InLayout = VK_IMAGE_LAYOUT_UNDEFINED);
 
     void RegisterExternalTexture(const std::string& Name, IDirect3DTexture9* Texture);
 
@@ -73,11 +74,12 @@ public:
         }
     }
 
-    bool CreateSurface(FVulkanInteropSurface& Out, UINT InWidth, UINT InHeight, D3DFORMAT InFormat, bool bUseStorage);
+    bool CreateSurface(FVulkanInteropSurface& Out, UINT InWidth, UINT InHeight, D3DFORMAT InFormat, bool bIsWriteable, VkImageLayout InLayout = VK_IMAGE_LAYOUT_UNDEFINED);
     bool CreateSurfaceFromD3DTexture(
         FVulkanInteropSurface& Out,
         IDirect3DTexture9* InTexture,
-        bool bUseStorage);
+        bool bIsWriteable,
+        VkImageLayout InLayout = VK_IMAGE_LAYOUT_UNDEFINED);
     bool CreateSurfaceFromD3DSurface(
         FVulkanInteropSurface& Out,
         IDirect3DSurface9* InTexture);

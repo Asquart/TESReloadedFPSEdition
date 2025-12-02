@@ -105,8 +105,8 @@ def main():
     print("============================================")
 
     # Keep window open if double-clicked
-    if sys.stdout.isatty():
-        input("\nPress Enter to exit...")
+    # if sys.stdout.isatty():
+    #     input("\nPress Enter to exit...")
 
 if __name__ == "__main__":
     main()

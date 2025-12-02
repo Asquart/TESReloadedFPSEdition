@@ -1,24 +1,9 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
+
+#include "Includes/GlobalLayout.comp.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
-
-// ---------- Global frame set (set = 0) ----------
-//
-// binding 0: depth texture (NVR combined depth, via FVulkanGlobalResources)
-// binding 1: frame UBO (projection/view etc., not actually used yet here)
-
-layout(set = 0, binding = 0) uniform sampler2D gDepth;
-
-layout(set = 0, binding = 1, std140) uniform GlobalFrameUBO {
-    mat4 Projection;
-    mat4 InvProjection;
-    mat4 View;
-    mat4 InvView;
-
-    vec4 DepthConstants;   // x = viewNearZ, z = invertedDepth etc.
-    vec4 CameraData;       // x = nearZ, y = farZ
-    vec4 CameraPosition;
-} uFrame;
 
 // ---------- Local set (set = 1) ----------
 //

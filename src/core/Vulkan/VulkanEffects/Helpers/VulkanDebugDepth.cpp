@@ -1,13 +1,13 @@
-#include "VulkanDebugDepth.h"
+ #include "VulkanDebugDepth.h"
 
 // If you use the factory macro:
-REGISTER_VULKAN_EFFECT(FVulkanDebugDepthEffect,
-    EVulkanEffectPhase::PreTonemap,
-    3); // order: before AO etc.
+// REGISTER_VULKAN_EFFECT(FVulkanDebugDepthEffect,
+//     EVulkanEffectPhase::PreTonemap,
+//     3); // order: before AO etc.
 
 FVulkanDebugDepthEffect::FVulkanDebugDepthEffect()
 {
-    SpirvPath = "Data\\Shaders\\NewVegasReloaded\\Vulkan\\Includes\\CombineDepth.comp.spv";
+    SpirvPath = "Data\\Shaders\\NewVegasReloaded\\Vulkan\\CombineDepth.comp.spv";
 }
 
 void FVulkanDebugDepthEffect::DestroyResources()
@@ -128,7 +128,6 @@ void FVulkanDebugDepthEffect::CreateOutputSurfaceIfNeeded(uint32_t Width, uint32
             // Check if the existing size matches
             if (Desc.Width == Width && Desc.Height == Height)
             {
-                Logger::Log("FVulkanCombineDepthEffect::RecreateCombinedSurfaceIfNeeded -CombinedDepthSurface is valid and of required dimensions");
                 return; // already correct
             }
 
@@ -261,6 +260,5 @@ void FVulkanDebugDepthEffect::CompleteRendering(IDirect3DSurface9* SceneColor)
             OutputSurface.D3DSurface, nullptr,
             SceneColor, nullptr,
             D3DTEXF_POINT);
-        Logger::Log("DebugRunOnNvrCombinedDepth: StretchRect hr=0x%08X", HrBlit);
     }
 }

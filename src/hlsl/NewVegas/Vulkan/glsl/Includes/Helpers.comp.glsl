@@ -109,4 +109,59 @@ vec3 selectColor(
     return black.rgb;
 }
 
+ivec2 UVToPixel(vec2 uv)
+{
+    // reconstruct resolution from reciprocal
+    vec2 resolution = vec2(
+        1.0 / uFrame.TESR_ReciprocalResolution.x,
+        1.0 / uFrame.TESR_ReciprocalResolution.y
+    );
+
+    ivec2 pix = ivec2(floor(uv * resolution));
+    return pix;
+}
+
+// GLSL: check if this UV belongs to a specific debug pixel
+bool IsDebugPixelUV(vec2 uv, ivec2 debugPixel)
+{
+    ivec2 pix = UVToPixel(uv);
+    return all(equal(pix, debugPixel));
+}
+
+float quantize_half(float v) {
+    // convert float32 → float16 → float32 by hand
+    uint f32 = floatBitsToUint(v);
+    uint sign = (f32 >> 16) & 0x8000u;
+    int  exp  = int((f32 >> 23) & 0xFFu) - 127 + 15;
+    uint mant = (f32 >> 13) & 0x03FFu;
+
+    if (exp <= 0) {       // underflow → zero
+        return (sign << 16);
+    }
+    if (exp >= 31) {      // overflow → inf
+        return floatBitsToUint(sign | 0x7C00u);
+    }
+    uint f16 = sign | (uint(exp) << 10) | mant;
+    // now convert back to f32
+    return uintBitsToFloat(
+        ((f16 & 0x8000u) << 16) |
+        (((f16 >> 10) & 0x1Fu) + (127 - 15)) << 23 |
+        ((f16 & 0x3FFu) << 13)
+    );
+}
+
+vec3 quantize_to_half(vec3 x) {
+    return vec3(
+        quantize_half(x.r),
+        quantize_half(x.g),
+        quantize_half(x.b)
+    );
+}
+
+vec2 snap_uv_dx9(vec2 uv) {
+    // 10-bit per axis is common, but D3D9 behaves ~11 bits
+    const float snap = 2048.0; // try 1024.0 / 2048.0 / 4096.0
+    return floor(uv * snap + 0.5) / snap;
+}
+
 #endif // HELPERS_GLSL

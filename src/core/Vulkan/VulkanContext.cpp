@@ -45,7 +45,7 @@ uint32_t FVulkanContext::FindMemoryType(uint32_t TypeBits, VkMemoryPropertyFlags
             return i;
     }
 
-    // Fallback / debug – in release you might assert or log and return 0
+    // Fallback / debug ï¿½ in release you might assert or log and return 0
     Logger::Log("FVulkanContext::FindMemoryType: failed to find suitable memory type (typeBits=0x%08X, props=0x%08X)",
         TypeBits, Properties);
     return 0;
@@ -65,27 +65,35 @@ void FVulkanContext::InitSamplers()
     info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
     info.minLod = 0.0f;
     info.maxLod = 0.0f;
+    info.mipLodBias = 0.0f;
+    info.anisotropyEnable = VK_FALSE;
+    info.compareEnable = VK_FALSE;
 
     // Linear clamp
     info.minFilter = VK_FILTER_LINEAR;
     info.magFilter = VK_FILTER_LINEAR;
-    VK_CHECK(p_vkCreateSampler(Device, &info, nullptr, &SamplerLinearClamp), "vkCreateSampler");
+    info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;    // <--- FIXED
+    VK_CHECK(p_vkCreateSampler(Device, &info, nullptr, &SamplerLinearClamp),
+             "vkCreateSampler");
 
-    // Point clamp
+    // Point clamp (what HLSL wants)
     info.minFilter = VK_FILTER_NEAREST;
     info.magFilter = VK_FILTER_NEAREST;
-    p_vkCreateSampler(Device, &info, nullptr, &SamplerPointClamp);
+    info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;    // <--- FIXED
+    VK_CHECK(p_vkCreateSampler(Device, &info, nullptr, &SamplerPointClamp),
+             "vkCreateSampler");
 
-    // Linear repeat (optional)
+    // Linear repeat
     info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     info.minFilter = VK_FILTER_LINEAR;
     info.magFilter = VK_FILTER_LINEAR;
-    p_vkCreateSampler(Device, &info, nullptr, &SamplerLinearRepeat);
+    info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;    // <--- FIXED
+    VK_CHECK(p_vkCreateSampler(Device, &info, nullptr, &SamplerLinearRepeat),
+             "vkCreateSampler");
 }
 
 void FVulkanContext::InitPools()
