@@ -74,6 +74,12 @@ void IVulkanEffect::DestroyResources()
 
 void IVulkanEffect::CreateCommandBuffer()
 {
+    if (!p_vkAllocateCommandBuffers || VULKAN_CONTEXT.CmdPool == VK_NULL_HANDLE || VULKAN_CONTEXT.Device == VK_NULL_HANDLE)
+    {
+        Logger::Log("IVulkanEffect: command buffer allocation skipped (fn/device/pool missing)");
+        return;
+    }
+
     VkCommandBufferAllocateInfo CommandBufferAllocateInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
     CommandBufferAllocateInfo.commandPool = VULKAN_CONTEXT.CmdPool;
     CommandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;

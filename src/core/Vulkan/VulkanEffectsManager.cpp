@@ -21,6 +21,11 @@ void FVulkanEffectsManager::Initialize(IDirect3DDevice9* InD3D9Device)
     ScreenHeight = Viewport.Height;
 
     VulkanContext.Initialize();
+    if (!VulkanContext.bInitialized)
+    {
+        Logger::Log("FVulkanEffectsManager::Initialize: Vulkan context failed to initialize");
+        return;
+    }
     InteropManager.Initialize();
 
     InitializeDepthSurface();
