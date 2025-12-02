@@ -132,4 +132,4 @@ struct TVulkanEffectRegistrar
 
 #define REGISTER_VULKAN_EFFECT(EffectClass, PhaseEnum, OrderValue) \
     static TVulkanEffectRegistrar<EffectClass> \
-        g_##EffectClass##_Registrar(#EffectClass, PhaseEnum, OrderValue);
+        g_##EffectClass##_Registrar(EffectClass().GetName(), PhaseEnum, OrderValue);
