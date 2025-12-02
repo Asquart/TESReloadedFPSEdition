@@ -425,44 +425,6 @@ void FVulkanEffectsManager::InitializeBlueNoiseSurface()
 
 void FVulkanEffectsManager::RegisterEffects()
 {
-    static bool bRegisteredBuiltinEffects = false;
-    if (!bRegisteredBuiltinEffects)
-    {
-        // Fallback registrations to ensure built-in effects are always available even
-        // if the static registrar macro is optimized out.
-        const auto HasEffect = [](const std::string& Name)
-        {
-            for (const auto& Info : FVulkanEffectFactory::GetRegistry())
-            {
-                if (Info.Name == Name)
-                {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        if (!HasEffect("VulkanNormals"))
-        {
-            FVulkanEffectFactory::Register(
-                "VulkanNormals",
-                EVulkanEffectPhase::PreTonemap,
-                0,
-                []() -> std::unique_ptr<IVulkanEffect> { return std::make_unique<FVulkanNormals>(); });
-        }
-
-        if (!HasEffect("CombineDepth"))
-        {
-            FVulkanEffectFactory::Register(
-                "CombineDepth",
-                EVulkanEffectPhase::PreTonemap,
-                3,
-                []() -> std::unique_ptr<IVulkanEffect> { return std::make_unique<FVulkanDebugDepthEffect>(); });
-        }
-
-        bRegisteredBuiltinEffects = true;
-    }
-
     for (const auto& Info : FVulkanEffectFactory::GetRegistry())
     {
         auto Effect = Info.Create();

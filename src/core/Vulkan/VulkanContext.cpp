@@ -22,12 +22,13 @@ void FVulkanContext::Initialize()
     if (!p_vkGetPhysicalDeviceProperties)
     {
         Logger::Log("FVulkanContext: vkGetPhysicalDeviceProperties not available");
-        return;
     }
-
-    VkPhysicalDeviceProperties deviceProps{};
-    p_vkGetPhysicalDeviceProperties(PhysicalDevice, &deviceProps);
-    TimestampPeriod = deviceProps.limits.timestampPeriod;
+    else
+    {
+        VkPhysicalDeviceProperties deviceProps{};
+        p_vkGetPhysicalDeviceProperties(PhysicalDevice, &deviceProps);
+        TimestampPeriod = deviceProps.limits.timestampPeriod;
+    }
 
     InitSamplers();
     InitPools();

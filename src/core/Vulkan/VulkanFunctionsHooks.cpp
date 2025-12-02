@@ -98,6 +98,7 @@ void VulkanFunctionsHooks::InitVulkanFunctionPointers(VkInstance instance, VkDev
     LoadDev(p_vkCmdWriteTimestamp, "vkCmdWriteTimestamp");
     LoadDev(p_vkWaitForFences, "vkWaitForFences");
     LoadDev(p_vkGetQueryPoolResults, "vkGetQueryPoolResults");
+    LoadDev(p_vkGetPhysicalDeviceProperties, "vkGetPhysicalDeviceProperties");
     LoadDev(p_vkDestroyPipeline, "vkDestroyPipeline");
     LoadDev(p_vkDestroyPipelineLayout, "vkDestroyPipelineLayout");
     LoadDev(p_vkDestroyDescriptorSetLayout, "vkDestroyDescriptorSetLayout");
@@ -116,6 +117,7 @@ void VulkanFunctionsHooks::InitVulkanFunctionPointers(VkInstance instance, VkDev
     LoadDev(p_vkUnmapMemory, "vkUnmapMemory");
     LoadDev(p_vkGetPhysicalDeviceMemoryProperties, "vkGetPhysicalDeviceMemoryProperties");
     LoadDev(p_vkCmdPipelineBarrier, "vkCmdPipelineBarrier");
+    LoadDev(p_vkQueueWaitIdle, "vkQueueWaitIdle");
 
     Logger::Log("Vulkan function pointers initialized");
 }
