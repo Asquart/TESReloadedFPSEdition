@@ -17,6 +17,12 @@ if (!TheRenderManager->DXVK)    \
 
 #define VULKAN_CONTEXT TheVulkanEffectsManager->VulkanContext
 
+#define BEGIN_DEBUG_GPU_TIME(InVulkanEffect) \
+    if (DEBUG) { (InVulkanEffect)->BeginGpuTimer(); }
+
+#define END_DEBUG_GPU_TIME(InVulkanEffect) \
+    if (DEBUG) { (InVulkanEffect)->EndGpuTimer(); }
+
 #define TRY_APPLY_FENCE(InVulkanEffect)\
     if (InVulkanEffect->EffectFence != VK_NULL_HANDLE) \
     { \
@@ -31,6 +37,7 @@ if (!TheRenderManager->DXVK)    \
         { \
             p_vkWaitForFences(VULKAN_CONTEXT.Device, 1, &InVulkanEffect->EffectFence, VK_TRUE, UINT64_MAX); \
             InVulkanEffect->bFenceInUse = false; \
+            InVulkanEffect->ResolveGpuTime(); \
         } \
     } \
 
@@ -38,7 +45,8 @@ if (!TheRenderManager->DXVK)    \
     if ((InVulkanEffect->EffectFence) != VK_NULL_HANDLE && (InVulkanEffect->bFenceInUse)) { \
             p_vkWaitForFences(VULKAN_CONTEXT.Device, 1, &(InVulkanEffect->EffectFence), VK_TRUE, UINT64_MAX); \
             (InVulkanEffect->bFenceInUse) = false;                 \
-        }     
+            InVulkanEffect->ResolveGpuTime(); \
+        }
 
 struct FVulkanContext
 {

@@ -28,6 +28,7 @@ public:
     FVulkanInteropSurface* GetBlueNoiseSurface();
 
     IVulkanEffect* GetEffectByName(std::string InName, EVulkanEffectPhase InPhase);
+    IVulkanEffect* FindEffectByName(const std::string& InName);
 
     UINT ScreenWidth;
     UINT ScreenHeight;
@@ -42,6 +43,7 @@ private:
     std::unordered_map<std::string, std::unique_ptr<IVulkanEffect>> EffectsPostTonemap;
 
     void RegisterEffects();
+    void RefreshEffectSettings();
 
     void InitializeSurfaces();
 

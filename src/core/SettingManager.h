@@ -1,6 +1,8 @@
 #pragma once
 
 #define TOML11_PRESERVE_COMMENTS_BY_DEFAULT
+#include <string>
+#include <vector>
 #include "../lib/toml11/toml.hpp"
 
 
@@ -336,6 +338,15 @@ public:
 		UInt32			FileSize;
 	};
 
+	struct VulkanEffectSetting
+	{
+		std::string		Section = "Main";
+		std::string		Key;
+		Configuration::NodeType Type = Configuration::NodeType::Boolean;
+		std::string		DefaultValue;
+		std::string		Description;
+	};
+
 	static void				Initialize();
 	void					LoadSettings();
 	void					SaveSettings();
@@ -359,6 +370,7 @@ public:
 	void					CreateNode(Configuration::ConfigNode* Node, const char* Section, const char* Key, int Value, bool Reboot);
 	void					CreateNode(Configuration::ConfigNode* Node, const char* Section, const char* Key, bool Value, bool Reboot);
 	void					CreateNodeS(Configuration::ConfigNode* Node, const char* Section, const char* Key, const char* Value, bool Reboot);
+	void					RegisterVulkanEffectDefaults(const std::string& EffectName, const std::string& Description, const std::vector<VulkanEffectSetting>& Settings);
 	bool					GetMenuShaderEnabled(const char* Name);
 	void					SetMenuShaderEnabled(const char* Name, bool enabled);
 	bool					GetMenuMiscEnabled(const char* Name);

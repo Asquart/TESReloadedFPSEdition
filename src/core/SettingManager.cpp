@@ -1171,6 +1171,79 @@ void SettingManager::CreateNodeS(Configuration::ConfigNode* Node, const char* Se
 }
 
 
+
+
+void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName, const std::string& Description, const std::vector<VulkanEffectSetting>& Settings)
+{
+        if (!Config.configLoaded) Config.Init();
+
+        tomlValue& shadersTable = Config.DefaultConfig["_Shaders"];
+        if (!shadersTable.is_table()) {
+                shadersTable = toml::table();
+        }
+
+        tomlValue& effectTable = shadersTable[EffectName];
+        if (!effectTable.is_table()) {
+                effectTable = toml::table();
+        }
+
+        auto& effectMap = *effectTable.as_table();
+
+        tomlValue& statusTableValue = effectMap["Status"];
+        if (!statusTableValue.is_table()) {
+                statusTableValue = toml::table();
+        }
+
+        auto& statusTable = *statusTableValue.as_table();
+        if (!statusTable.contains("Enabled")) {
+                toml::value enabledValue = false;
+                if (!Description.empty()) {
+                        enabledValue.comments().push_back(Description);
+                }
+                statusTable.insert_or_assign("Enabled", enabledValue);
+        }
+
+        for (const auto& setting : Settings)
+        {
+                tomlValue& sectionValue = effectMap[setting.Section];
+                if (!sectionValue.is_table()) {
+                        sectionValue = toml::table();
+                }
+
+                auto& sectionTable = *sectionValue.as_table();
+                if (sectionTable.contains(setting.Key)) {
+                        continue;
+                }
+
+                toml::value defaultValue;
+                switch (setting.Type)
+                {
+                case Configuration::NodeType::Integer:
+                        defaultValue = FromString<int>(setting.DefaultValue.c_str());
+                        break;
+                case Configuration::NodeType::Float:
+                        defaultValue = FromString<float>(setting.DefaultValue.c_str());
+                        break;
+                case Configuration::NodeType::String:
+                        defaultValue = setting.DefaultValue;
+                        break;
+                case Configuration::NodeType::Boolean:
+                default:
+                        defaultValue = FromString<bool>(setting.DefaultValue.empty() ? "0" : setting.DefaultValue.c_str());
+                        break;
+                }
+
+                if (!setting.Description.empty()) {
+                        defaultValue.comments().push_back(setting.Description);
+                }
+
+                sectionTable.insert_or_assign(setting.Key, defaultValue);
+        }
+
+        SettingsChanged = true;
+        hasUnsavedChanges = true;
+}
+
 bool SettingManager::GetMenuShaderEnabled(const char* Name) {
 	char settingString[256];
 	strcpy(settingString, "Shaders.");
@@ -1192,7 +1265,7 @@ bool SettingManager::GetMenuShaderEnabled(const char* Name) {
 	}
 
 	strcat(settingString, ".Status");
-	bool enabled = (bool*)GetSettingI(settingString, "Enabled");
+        bool enabled = static_cast<bool>(GetSettingI(settingString, "Enabled"));
 	if (!enabled && IsShaderForced(Name)) {
 		SetMenuShaderEnabled(Name, true);
 		enabled = true;
@@ -1212,7 +1285,7 @@ void SettingManager::SetMenuShaderEnabled(const char* Name, bool enabled) {
 bool SettingManager::GetMenuMiscEnabled(const char* Name) {
 	char settingString[256];
 	strcpy(settingString, "Main.Main.Misc");
-	return (bool*)GetSettingI(settingString, Name);
+        return static_cast<bool>(GetSettingI(settingString, Name));
 }
 
 

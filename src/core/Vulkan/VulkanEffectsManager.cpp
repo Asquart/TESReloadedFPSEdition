@@ -34,6 +34,8 @@ void FVulkanEffectsManager::Initialize(IDirect3DDevice9* InD3D9Device)
 
     for (auto& EffectPair : EffectsPostTonemap)
         EffectPair.second->Initialize();
+
+    RefreshEffectSettings();
 }
 
 void FVulkanEffectsManager::Shutdown()
@@ -164,14 +166,27 @@ void FVulkanEffectsManager::RenderPreTonemapping(IDirect3DSurface9* InSceneColor
 {
     DXVK_CheckReturn()
 
+    if (TheSettingManager && TheSettingManager->SettingsChanged)
+    {
+        RefreshEffectSettings();
+    }
+
     GlobalResources.UpdatePerFrame();
     for (auto& EffectPair : EffectsPreTonemap)
     {
+        if (!EffectPair.second->IsEnabled())
+        {
+            continue;
+        }
         //Logger::Log("Submitting effect %s", EffectPair.first.c_str());
         EffectPair.second->SubmitRendering();
     }
     for (auto& EffectPair : EffectsPreTonemap)
     {
+        if (!EffectPair.second->IsEnabled())
+        {
+            continue;
+        }
         //Logger::Log("Completing effect %s", EffectPair.first.c_str());
         EffectPair.second->CompleteRendering(InSceneColor);
     }
@@ -187,8 +202,19 @@ void FVulkanEffectsManager::RenderPreTonemapping(IDirect3DSurface9* InSceneColor
 void FVulkanEffectsManager::RenderPostTonemapping(IDirect3DSurface9* InSceneColor)
 {
     DXVK_CheckReturn()
+    if (TheSettingManager && TheSettingManager->SettingsChanged)
+    {
+        RefreshEffectSettings();
+    }
     for (auto& EffectPair : EffectsPostTonemap)
+    {
+        if (!EffectPair.second->IsEnabled())
+        {
+            continue;
+        }
+
         EffectPair.second->CompleteRendering(InSceneColor);
+    }
 }
 
 FVulkanInteropSurface* FVulkanEffectsManager::GetDepthSurface()
@@ -233,6 +259,33 @@ IVulkanEffect* FVulkanEffectsManager::GetEffectByName(std::string InName, EVulka
         return EffectsPostTonemap[InName].get();
     }
     return nullptr;
+}
+
+IVulkanEffect* FVulkanEffectsManager::FindEffectByName(const std::string& InName)
+{
+    if (EffectsPreTonemap.contains(InName))
+    {
+        return EffectsPreTonemap[InName].get();
+    }
+    if (EffectsPostTonemap.contains(InName))
+    {
+        return EffectsPostTonemap[InName].get();
+    }
+
+    return nullptr;
+}
+
+void FVulkanEffectsManager::RefreshEffectSettings()
+{
+    for (auto& EffectPair : EffectsPreTonemap)
+    {
+        EffectPair.second->RefreshMenuSettings();
+    }
+
+    for (auto& EffectPair : EffectsPostTonemap)
+    {
+        EffectPair.second->RefreshMenuSettings();
+    }
 }
 
 void FVulkanEffectsManager::InitializeSurfaces()
@@ -368,7 +421,7 @@ void FVulkanEffectsManager::RegisterEffects()
     for (const auto& Info : FVulkanEffectFactory::GetRegistry())
     {
         auto Effect = Info.Create();
-        Effect->Initialize();
+        Effect->RegisterMenuSettings();
 
         if (Info.Phase == EVulkanEffectPhase::PreTonemap)
             EffectsPreTonemap[Info.Name] = std::move(Effect);
