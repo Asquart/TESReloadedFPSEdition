@@ -1199,7 +1199,7 @@ void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName,
         }
 
         if (statusTableValue.is_table() && !toml::get<toml::table>(statusTableValue).contains("Enabled")) {
-                toml::value enabledValue = false;
+                toml::value enabledValue = true;
                 if (!Description.empty()) {
                         enabledValue.comments().push_back(Description);
                 }
