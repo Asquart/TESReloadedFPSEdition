@@ -1187,31 +1187,34 @@ void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName,
                 effectTable = toml::table();
         }
 
-        auto& effectMap = *effectTable.as_table();
+        auto* effectMap = effectTable.as_table();
+        if (!effectMap) {
+                return;
+        }
 
-        tomlValue& statusTableValue = effectMap["Status"];
+        tomlValue& statusTableValue = (*effectMap)["Status"];
         if (!statusTableValue.is_table()) {
                 statusTableValue = toml::table();
         }
 
-        auto& statusTable = *statusTableValue.as_table();
-        if (!statusTable.contains("Enabled")) {
+        auto* statusTable = statusTableValue.as_table();
+        if (statusTable && !statusTable->contains("Enabled")) {
                 toml::value enabledValue = false;
                 if (!Description.empty()) {
                         enabledValue.comments().push_back(Description);
                 }
-                statusTable.insert_or_assign("Enabled", enabledValue);
+                statusTable->insert_or_assign("Enabled", enabledValue);
         }
 
         for (const auto& setting : Settings)
         {
-                tomlValue& sectionValue = effectMap[setting.Section];
+                tomlValue& sectionValue = (*effectMap)[setting.Section];
                 if (!sectionValue.is_table()) {
                         sectionValue = toml::table();
                 }
 
-                auto& sectionTable = *sectionValue.as_table();
-                if (sectionTable.contains(setting.Key)) {
+                auto* sectionTable = sectionValue.as_table();
+                if (sectionTable && sectionTable->contains(setting.Key)) {
                         continue;
                 }
 
@@ -1233,11 +1236,15 @@ void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName,
                         break;
                 }
 
+                if (!sectionTable) {
+                        continue;
+                }
+
                 if (!setting.Description.empty()) {
                         defaultValue.comments().push_back(setting.Description);
                 }
 
-                sectionTable.insert_or_assign(setting.Key, defaultValue);
+                sectionTable->insert_or_assign(setting.Key, defaultValue);
         }
 
         SettingsChanged = true;
