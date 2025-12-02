@@ -1187,34 +1187,33 @@ void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName,
                 effectTable = toml::table();
         }
 
-        auto* effectMap = effectTable.as_table();
-        if (!effectMap) {
+        if (!effectTable.is_table()) {
                 return;
         }
 
-        tomlValue& statusTableValue = (*effectMap)["Status"];
+        toml::table& effectMap = toml::get<toml::table>(effectTable);
+
+        tomlValue& statusTableValue = effectMap["Status"];
         if (!statusTableValue.is_table()) {
                 statusTableValue = toml::table();
         }
 
-        auto* statusTable = statusTableValue.as_table();
-        if (statusTable && !statusTable->contains("Enabled")) {
+        if (statusTableValue.is_table() && !toml::get<toml::table>(statusTableValue).contains("Enabled")) {
                 toml::value enabledValue = false;
                 if (!Description.empty()) {
                         enabledValue.comments().push_back(Description);
                 }
-                statusTable->insert_or_assign("Enabled", enabledValue);
+                toml::get<toml::table>(statusTableValue).insert_or_assign("Enabled", enabledValue);
         }
 
         for (const auto& setting : Settings)
         {
-                tomlValue& sectionValue = (*effectMap)[setting.Section];
+                tomlValue& sectionValue = effectMap[setting.Section];
                 if (!sectionValue.is_table()) {
                         sectionValue = toml::table();
                 }
 
-                auto* sectionTable = sectionValue.as_table();
-                if (sectionTable && sectionTable->contains(setting.Key)) {
+                if (sectionValue.is_table() && toml::get<toml::table>(sectionValue).contains(setting.Key)) {
                         continue;
                 }
 
@@ -1236,7 +1235,7 @@ void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName,
                         break;
                 }
 
-                if (!sectionTable) {
+                if (!sectionValue.is_table()) {
                         continue;
                 }
 
@@ -1244,7 +1243,7 @@ void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName,
                         defaultValue.comments().push_back(setting.Description);
                 }
 
-                sectionTable->insert_or_assign(setting.Key, defaultValue);
+                toml::get<toml::table>(sectionValue).insert_or_assign(setting.Key, defaultValue);
         }
 
         SettingsChanged = true;
