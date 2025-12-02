@@ -17,6 +17,10 @@ void FVulkanContext::Initialize()
     InteropDevice->GetVulkanHandles(&Instance, &PhysicalDevice, &Device);
     InteropDevice->GetSubmissionQueue(&Queue, &QueueIndex, &QueueFamilyIndex);
 
+    VkPhysicalDeviceProperties deviceProps{};
+    p_vkGetPhysicalDeviceProperties(PhysicalDevice, &deviceProps);
+    TimestampPeriod = deviceProps.limits.timestampPeriod;
+
     VulkanFunctionsHooks::InitVulkanFunctionPointers(Instance, Device);
 
     InitSamplers();
