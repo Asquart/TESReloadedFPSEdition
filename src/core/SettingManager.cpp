@@ -1191,7 +1191,7 @@ void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName,
                 return;
         }
 
-        toml::table& effectMap = toml::get<toml::table>(effectTable);
+        tomlValue& effectMap = effectTable;
 
         tomlValue& statusTableValue = effectMap["Status"];
         if (!statusTableValue.is_table()) {
