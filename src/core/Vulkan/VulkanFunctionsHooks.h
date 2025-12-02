@@ -68,6 +68,8 @@ extern PFN_vkQueueWaitIdle p_vkQueueWaitIdle;
 extern PFN_vkGetPhysicalDeviceMemoryProperties p_vkGetPhysicalDeviceMemoryProperties;
 extern PFN_vkCmdPipelineBarrier p_vkCmdPipelineBarrier;
 
+extern PFN_vkResetQueryPool p_vkResetQueryPool;
+
 class VulkanFunctionsHooks
 {
 public:

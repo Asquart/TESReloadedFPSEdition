@@ -1,3 +1,6 @@
+#include "../NewVegas/Managers.h"
+#include "Vulkan/VulkanEffectsManager.h"
+
 #define MenuSettings TheSettingManager->SettingsMain.Menu
 #define TextColorNormal D3DCOLOR_XRGB(MenuSettings.TextColorNormal[0], MenuSettings.TextColorNormal[1], MenuSettings.TextColorNormal[2])
 #define TextShadowColorNormal D3DCOLOR_XRGB(MenuSettings.TextShadowColorNormal[0], MenuSettings.TextShadowColorNormal[1], MenuSettings.TextShadowColorNormal[2])
@@ -547,34 +550,42 @@ void GameMenuManager::Render() {
 			DrawShadowedText(enabled ? "ENABLED" : "DISABLED", pos + 1, lineYPos, 100, textColor, FontStatus, DT_LEFT);
 
 			// show render time for effect if debug mode enabled
-			EffectRecord* effect = TheShaderManager->GetEffectByName(Sections[i].c_str());
-			if (effect && TheSettingManager->SettingsMain.Develop.DebugMode) { 
-				std::stringstream ss;
+                        EffectRecord* effect = TheShaderManager->GetEffectByName(Sections[i].c_str());
+                        if (effect && TheSettingManager->SettingsMain.Develop.DebugMode) {
+                                std::stringstream ss;
 
-				float total = max(effect->renderTime + effect->constantUpdateTime, 0);
+                                float total = max(effect->renderTime + effect->constantUpdateTime, 0);
 
-				// in the case of Shadows, we add the time spent rendering the shadows buffer and shadow maps
-				if ((effect == TheShaderManager->Effects.ShadowsExteriors && TheShaderManager->GameState.isExterior)|| 
-					(effect == TheShaderManager->Effects.ShadowsInteriors && !TheShaderManager->GameState.isExterior)) {
+                                // in the case of Shadows, we add the time spent rendering the shadows buffer and shadow maps
+                                if ((effect == TheShaderManager->Effects.ShadowsExteriors && TheShaderManager->GameState.isExterior)||
+                                        (effect == TheShaderManager->Effects.ShadowsInteriors && !TheShaderManager->GameState.isExterior)) {
 
-					total += TheShaderManager->Effects.PointShadows->renderTime;
-					total += TheShaderManager->Effects.PointShadows2->renderTime;
-					total += TheShaderManager->Effects.SunShadows->renderTime;
-					total += TheShadowManager->shadowMapsRenderTime;
-				}
+                                        total += TheShaderManager->Effects.PointShadows->renderTime;
+                                        total += TheShaderManager->Effects.PointShadows2->renderTime;
+                                        total += TheShaderManager->Effects.SunShadows->renderTime;
+                                        total += TheShadowManager->shadowMapsRenderTime;
+                                }
 
-				if (!TheSettingManager->SettingsMain.Main.RenderEffects) total = 0;
+                                if (!TheSettingManager->SettingsMain.Main.RenderEffects) total = 0;
 
-				ss << std::fixed << std::setprecision(4) << total;
-				std::string duration = ss.str();
-				duration += " ms";
+                                ss << std::fixed << std::setprecision(4) << total;
+                                std::string duration = ss.str();
+                                duration += " ms";
 
-				//Logger::Log("%s render time: %s", Sections[i].c_str(), duration.c_str());
+                                DrawShadowedText(duration.c_str(), 0, lineYPos, ItemColumnWidth - textSize, TextColorNormal, FontNormal, DT_RIGHT);
+                        }
+                        else if (TheVulkanEffectsManager && TheSettingManager->SettingsMain.Develop.DebugMode) {
+                                if (IVulkanEffect* vulkanEffect = TheVulkanEffectsManager->FindEffectByName(Sections[i])) {
+                                        std::stringstream ss;
+                                        ss << std::fixed << std::setprecision(4) << vulkanEffect->GetGpuTimeMs();
+                                        std::string duration = ss.str();
+                                        duration += " ms";
 
-				DrawShadowedText(duration.c_str(), 0, lineYPos, ItemColumnWidth - textSize, TextColorNormal, FontNormal, DT_RIGHT);
-			}
-		}
-	}
+                                        DrawShadowedText(duration.c_str(), 0, lineYPos, ItemColumnWidth - textSize, TextColorNormal, FontNormal, DT_RIGHT);
+                                }
+                        }
+                }
+        }
 
 	// render middle column (shader/menu subsection names)
 	TheSettingManager->FillMenuSections(&Sections, SelectedNode.Section); // get a list of sections for a given category

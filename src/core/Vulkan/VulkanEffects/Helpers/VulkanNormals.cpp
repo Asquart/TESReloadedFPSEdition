@@ -321,6 +321,7 @@ void FVulkanNormals::SubmitRendering()
     uint32_t groupsY = (VulkanDepthSurface->Height + Wgy - 1) / Wgy;
 
     // -------- PASS LOOP: 0 = reconstruct, 1 = blur H, 2 = blur V --------
+    BEGIN_DEBUG_GPU_TIME(this);
     for (uint32_t pass = 0; pass < 3; ++pass) {
         UpdateDescriptorsForPass(pass);
 
@@ -399,6 +400,7 @@ void FVulkanNormals::SubmitRendering()
                 1, &barrier);
         }
     }
+    END_DEBUG_GPU_TIME(this);
     vr = p_vkEndCommandBuffer(EffectCommandBuffer);
     if (vr != VK_SUCCESS) {
         Logger::Log("FVulkanNormals::SubmitRendering: vkEndCommandBuffer failed rv=%d", vr);

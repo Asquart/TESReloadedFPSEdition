@@ -7,6 +7,7 @@
 
 #include "VulkanContext.h"
 #include "VulkanInteropManager.h"
+#include "../SettingManager.h"
 
 
 enum class EVulkanEffectPhase : uint8_t
@@ -21,6 +22,7 @@ public:
     virtual ~IVulkanEffect();
 
     virtual const char* GetName() const = 0;
+    virtual const char* GetDescription() const { return ""; }
     virtual EVulkanEffectPhase GetPhase() const = 0;
 
     virtual void Initialize();
@@ -33,6 +35,13 @@ public:
     virtual void OnGameBuffersUpdated();
 
     const char* SpirvPath = "";
+
+    virtual std::vector<SettingManager::VulkanEffectSetting> GetDefaultSettings() const { return {}; }
+    void RegisterMenuSettings();
+    void RefreshMenuSettings();
+    bool IsEnabled() const { return bEnabled; }
+    float GetGpuTimeMs() const { return GpuTimeMs; }
+    std::string GetSettingsSection(const std::string& SubSection) const;
 
 protected:
 
@@ -48,6 +57,10 @@ protected:
     VkCommandBuffer EffectCommandBuffer = VK_NULL_HANDLE;
     VkFence EffectFence = VK_NULL_HANDLE;
     bool bFenceInUse = false;
+    VkQueryPool TimingQueryPool = VK_NULL_HANDLE;
+    bool bGpuTimingActive = false;
+    float GpuTimeMs = 0.0f;
+    bool bEnabled = true;
 
     virtual void CreateResources();
     virtual void DestroyResources();
@@ -59,7 +72,11 @@ protected:
     virtual void CreateCommandBuffer();
     virtual void CreateFence();
     virtual void LoadShaderModule();
-};
+    virtual void CreateTimingQueries();
+    void BeginGpuTimer();
+    void EndGpuTimer();
+    void ResolveGpuTime();
+}; 
 
 struct FVulkanEffectInfo
 {
