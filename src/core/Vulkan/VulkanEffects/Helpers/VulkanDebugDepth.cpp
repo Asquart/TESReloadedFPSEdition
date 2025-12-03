@@ -1,11 +1,15 @@
  #include "VulkanDebugDepth.h"
 
-// If you use the factory macro:
-// REGISTER_VULKAN_EFFECT(FVulkanDebugDepthEffect,
-//     EVulkanEffectPhase::PreTonemap,
-//     3); // order: before AO etc.
+// Factory macro:
+REGISTER_VULKAN_EFFECT(FVulkanDebugDepthEffect,
+    EVulkanEffectPhase::PreTonemap,
+    3); // order: before AO etc.
 
 FVulkanDebugDepthEffect::FVulkanDebugDepthEffect()
+    : IVulkanEffect(
+          "CombineDepth",
+          "Vulkan debug depth overlay",
+          {})
 {
     SpirvPath = "Data\\Shaders\\NewVegasReloaded\\Vulkan\\CombineDepth.comp.spv";
 }
@@ -101,6 +105,10 @@ void FVulkanDebugDepthEffect::CreateDescriptorSets()
 
     VK_CHECK(p_vkAllocateDescriptorSets(Device, &AllocInfo, &EffectDescriptorSet),
         "vkAllocateDescriptorSets(CombineDepth)");
+}
+
+void FVulkanDebugDepthEffect::UpdateSettingsFromNvr()
+{
 }
 
 void FVulkanDebugDepthEffect::CreateInteropTextures()
@@ -222,7 +230,9 @@ void FVulkanDebugDepthEffect::SubmitRendering()
     uint32_t GroupsX = (VulkanDepthSurface->Width + Wgx - 1) / Wgx;
     uint32_t GroupsY = (VulkanDepthSurface->Height + Wgy - 1) / Wgy;
 
+    BEGIN_DEBUG_GPU_TIME(this);
     p_vkCmdDispatch(EffectCommandBuffer, GroupsX, GroupsY, 1);
+    END_DEBUG_GPU_TIME(this);
 
     Vr = p_vkEndCommandBuffer(EffectCommandBuffer);
     if (Vr != VK_SUCCESS) {

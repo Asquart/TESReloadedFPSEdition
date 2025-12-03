@@ -7,6 +7,7 @@
 
 #include "VulkanContext.h"
 #include "VulkanInteropManager.h"
+#include "../SettingManager.h"
 
 
 enum class EVulkanEffectPhase : uint8_t
@@ -18,9 +19,14 @@ enum class EVulkanEffectPhase : uint8_t
 class IVulkanEffect
 {
 public:
+    IVulkanEffect(const std::string& inName,
+                  const std::string& inDescription,
+                  const std::vector<SettingManager::VulkanEffectSetting>& inDefaults);
+
     virtual ~IVulkanEffect();
 
-    virtual const char* GetName() const = 0;
+    const std::string& GetName() const { return Name; }
+    const std::string& GetDescription() const { return Description; }
     virtual EVulkanEffectPhase GetPhase() const = 0;
 
     virtual void Initialize();
@@ -33,6 +39,12 @@ public:
     virtual void OnGameBuffersUpdated();
 
     const char* SpirvPath = "";
+
+    void RegisterMenuSettings();
+    void RefreshMenuSettings();
+    bool IsEnabled() const { return bEnabled; }
+    float GetGpuTimeMs() const { return GpuTimeMs; }
+    std::string GetSettingsSection(const std::string& SubSection) const;
 
 protected:
 
@@ -48,17 +60,34 @@ protected:
     VkCommandBuffer EffectCommandBuffer = VK_NULL_HANDLE;
     VkFence EffectFence = VK_NULL_HANDLE;
     bool bFenceInUse = false;
+    VkQueryPool TimingQueryPool = VK_NULL_HANDLE;
+    bool bGpuTimingActive = false;
+    bool bEnabled = false;
+    bool bRegistered = false;
 
     virtual void CreateResources();
     virtual void DestroyResources();
 
-    virtual void UpdateSettingsFromNvr() {};
+    virtual void UpdateSettingsFromNvr() = 0;
     virtual void CreatePipeline() = 0;
     virtual void CreateDescriptorSets() = 0;
     virtual void CreateInteropTextures() = 0;
     virtual void CreateCommandBuffer();
     virtual void CreateFence();
     virtual void LoadShaderModule();
+    virtual void CreateTimingQueries();
+    void BeginGpuTimer();
+    void EndGpuTimer();
+    void ResolveGpuTime();
+
+    void EnsureRegistered();
+
+    std::string Name;
+    std::string Description;
+    std::vector<SettingManager::VulkanEffectSetting> DefaultSettings;
+
+public:
+    float GpuTimeMs;
 };
 
 struct FVulkanEffectInfo
@@ -99,7 +128,7 @@ public:
 template<typename TEffect>
 struct TVulkanEffectRegistrar
 {
-    TVulkanEffectRegistrar(const char* Name,
+    TVulkanEffectRegistrar(const std::string& Name,
         EVulkanEffectPhase Phase,
         int Order)
     {
@@ -115,4 +144,4 @@ struct TVulkanEffectRegistrar
 
 #define REGISTER_VULKAN_EFFECT(EffectClass, PhaseEnum, OrderValue) \
     static TVulkanEffectRegistrar<EffectClass> \
-        g_##EffectClass##_Registrar(#EffectClass, PhaseEnum, OrderValue);
+        g_##EffectClass##_Registrar(EffectClass().GetName(), PhaseEnum, OrderValue);

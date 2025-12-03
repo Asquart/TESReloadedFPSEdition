@@ -6,6 +6,13 @@ REGISTER_VULKAN_EFFECT(FVulkanNormals,
     0); // order
 
 FVulkanNormals::FVulkanNormals()
+    : IVulkanEffect(
+          "VulkanNormals",
+          "Screen-space normals reconstruction",
+          {
+              { "Main", "Strength", "1.0", Configuration::NodeType::Float, "Normals intensity" },
+              { "Main", "Radius",   "3.0", Configuration::NodeType::Float, "Sampling radius" },
+          })
 {
     SpirvPath = "Data\\Shaders\\NewVegasReloaded\\Vulkan\\Normals.comp.spv";
 }
@@ -116,6 +123,10 @@ void FVulkanNormals::CreateDescriptorSets()
 
     VK_CHECK(p_vkAllocateDescriptorSets(Device, &allocInfo, &EffectDescriptorSet),
              "vkAllocateDescriptorSets(VulkanNormals)");
+}
+
+void FVulkanNormals::UpdateSettingsFromNvr()
+{
 }
 
 void FVulkanNormals::UpdateDescriptorsForPass(uint32_t InPass)
@@ -321,6 +332,7 @@ void FVulkanNormals::SubmitRendering()
     uint32_t groupsY = (VulkanDepthSurface->Height + Wgy - 1) / Wgy;
 
     // -------- PASS LOOP: 0 = reconstruct, 1 = blur H, 2 = blur V --------
+    BEGIN_DEBUG_GPU_TIME(this);
     for (uint32_t pass = 0; pass < 3; ++pass) {
         UpdateDescriptorsForPass(pass);
 
@@ -399,6 +411,7 @@ void FVulkanNormals::SubmitRendering()
                 1, &barrier);
         }
     }
+    END_DEBUG_GPU_TIME(this);
     vr = p_vkEndCommandBuffer(EffectCommandBuffer);
     if (vr != VK_SUCCESS) {
         Logger::Log("FVulkanNormals::SubmitRendering: vkEndCommandBuffer failed rv=%d", vr);

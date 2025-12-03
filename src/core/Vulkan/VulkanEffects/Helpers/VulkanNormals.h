@@ -5,11 +5,6 @@
 class FVulkanNormals : public IVulkanEffect
 {
 public:
-    virtual const char* GetName() const override
-    {
-        return "VulkanNormals";
-    }
-
     FVulkanNormals();
 
     // Depth should be ready before AO etc., so PreTonemap is reasonable
@@ -28,6 +23,7 @@ protected:
     virtual void CreateDescriptorSets() override;
     void UpdateDescriptorsForPass(uint32_t InPass);
     virtual void CreateInteropTextures() override;
+    virtual void UpdateSettingsFromNvr() override;
 
 private:
     void CreateOutputSurfaceIfNeeded(uint32_t Width, uint32_t Height);

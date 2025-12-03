@@ -85,6 +85,7 @@ public:
 private:
 
     FVulkanGlobalSets GlobalSets;
+    bool bInitialized = false;
     void UpdateCpuUboParams();
     void CreateFrameSet();
     void DestroyFrameSet();

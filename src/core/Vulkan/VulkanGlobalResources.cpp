@@ -18,6 +18,7 @@ void FVulkanGlobalResources::Initialize()
 {
     DXVK_CheckReturn();
 
+    bInitialized = false;
     CreateFrameSet();
 }
 
@@ -32,8 +33,17 @@ void FVulkanGlobalResources::UpdatePerFrame()
 {
     DXVK_CheckReturn();
 
+    if (!bInitialized) {
+        return;
+    }
+
     FVulkanContext& Vulkan = TheVulkanEffectsManager->VulkanContext;
     VkDevice Device = Vulkan.Device;
+
+    if (!Device || !GlobalSets.FrameUBO || !GlobalSets.FrameUBOMemory ||
+        !GlobalSets.GlobalFrameDescriptorSet || !p_vkMapMemory || !p_vkUnmapMemory || !p_vkUpdateDescriptorSets) {
+        return;
+    }
 
     // 1) Update UBO contents
     UpdateCpuUboParams();
@@ -175,6 +185,7 @@ void FVulkanGlobalResources::CreateFrameSet()
     if (vr != VK_SUCCESS) {
         Logger::Log("CreateFrameSet: vkCreateDescriptorSetLayout failed (%d)", vr);
         GlobalSets.GlobalFrameSetLayout = VK_NULL_HANDLE;
+        DestroyFrameSet();
         return;
     }
 
@@ -190,6 +201,7 @@ void FVulkanGlobalResources::CreateFrameSet()
     if (vr != VK_SUCCESS) {
         Logger::Log("CreateFrameSet: vkCreateBuffer failed (%d)", vr);
         GlobalSets.FrameUBO = VK_NULL_HANDLE;
+        DestroyFrameSet();
         return;
     }
 
@@ -206,6 +218,7 @@ void FVulkanGlobalResources::CreateFrameSet()
 
     if (memType == ~0u) {
         Logger::Log("CreateFrameSet: no suitable memory type for UBO");
+        DestroyFrameSet();
         return;
     }
 
@@ -217,6 +230,7 @@ void FVulkanGlobalResources::CreateFrameSet()
     if (vr != VK_SUCCESS) {
         Logger::Log("CreateFrameSet: vkAllocateMemory failed (%d)", vr);
         GlobalSets.FrameUBOMemory = VK_NULL_HANDLE;
+        DestroyFrameSet();
         return;
     }
 
@@ -240,6 +254,7 @@ void FVulkanGlobalResources::CreateFrameSet()
     if (vr != VK_SUCCESS) {
         Logger::Log("CreateFrameSet: vkCreateDescriptorPool failed (%d)", vr);
         GlobalSets.GlobalFramePool = VK_NULL_HANDLE;
+        DestroyFrameSet();
         return;
     }
 
@@ -252,10 +267,12 @@ void FVulkanGlobalResources::CreateFrameSet()
     if (vr != VK_SUCCESS) {
         Logger::Log("CreateFrameSet: vkAllocateDescriptorSets failed (%d)", vr);
         GlobalSets.GlobalFrameDescriptorSet = VK_NULL_HANDLE;
+        DestroyFrameSet();
         return;
     }
 
     Logger::Log("CreateFrameSet: OK (layout+UBO+set created)");
+    bInitialized = true;
 }
 
 
@@ -286,4 +303,5 @@ void FVulkanGlobalResources::DestroyFrameSet()
     }
 
     GlobalSets.GlobalFrameDescriptorSet = VK_NULL_HANDLE;
+    bInitialized = false;
 }
