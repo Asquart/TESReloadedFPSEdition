@@ -1,4 +1,7 @@
-// BlurDepth.glsl - depth-aware blur helpers (no entry point)
+// #version 450
+#extension GL_GOOGLE_include_directive : enable
+
+#include "Blur.comp.glsl"
 
 #ifndef BLUR_DEPTH_GLSL
 #define BLUR_DEPTH_GLSL
@@ -18,7 +21,7 @@
 
 vec4 DepthBlur(
     vec2  uv,
-    sampler2D buffer,
+    sampler2D srcTex,   // renamed from 'buffer' to avoid GLSL 'buffer' keyword
     vec2  offsetMask,
     float blurRadius,
     float depthDrop,
@@ -26,21 +29,22 @@ vec4 DepthBlur(
 {
     // Center tap weight
     float weightSum = 0.114725602;
-    vec4  color1    = texture(buffer, uv) * weightSum;
+    vec4  color1    = texture(srcTex, uv) * weightSum;
 
     float depth1 = readDepth(uv);
 
     // HLSL: clip(endFade - depth1);
-    // clip(x) discards when x < 0
+    // In a fragment shader, this would discard the pixel and keep previous RT value.
+    // In compute we can't 'discard', so we just "don't blur" and return the source.
     if (endFade - depth1 < 0.0)
-        discard;
+        return vec4(texture(srcTex, uv).rgb, 1.0);
 
     depthDrop *= (depth1 / farZ);
 
     for (int i = 0; i < cKernelSize; ++i)
     {
-        vec2 uvOff  = uv + (BlurOffsets[i] * offsetMask) * blurRadius;
-        vec4 color2 = texture(buffer, uvOff);
+        vec2 uvOff   = uv + (BlurOffsets[i] * offsetMask) * blurRadius;
+        vec4 color2  = texture(srcTex, uvOff);
         float depth2 = readDepth(uvOff);
         float diff   = abs(depth1 - depth2);
 
@@ -55,5 +59,6 @@ vec4 DepthBlur(
 
     return vec4(color1.rgb, 1.0);
 }
+
 
 #endif // BLUR_DEPTH_GLSL
