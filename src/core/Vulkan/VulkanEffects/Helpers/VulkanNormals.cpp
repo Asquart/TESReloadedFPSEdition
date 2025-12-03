@@ -6,6 +6,13 @@ REGISTER_VULKAN_EFFECT(FVulkanNormals,
     0); // order
 
 FVulkanNormals::FVulkanNormals()
+    : IVulkanEffect(
+          "VulkanNormals",
+          "Screen-space normals reconstruction",
+          {
+              { "Main", "Strength", "1.0", Configuration::NodeType::Float, "Normals intensity" },
+              { "Main", "Radius",   "3.0", Configuration::NodeType::Float, "Sampling radius" },
+          })
 {
     SpirvPath = "Data\\Shaders\\NewVegasReloaded\\Vulkan\\Normals.comp.spv";
 }
@@ -116,6 +123,10 @@ void FVulkanNormals::CreateDescriptorSets()
 
     VK_CHECK(p_vkAllocateDescriptorSets(Device, &allocInfo, &EffectDescriptorSet),
              "vkAllocateDescriptorSets(VulkanNormals)");
+}
+
+void FVulkanNormals::UpdateSettingsFromNvr()
+{
 }
 
 void FVulkanNormals::UpdateDescriptorsForPass(uint32_t InPass)

@@ -1,5 +1,17 @@
 #include "VulkanEffect.h"
 
+IVulkanEffect::IVulkanEffect(const std::string& inName,
+    const std::string& inDescription,
+    const std::vector<SettingManager::VulkanEffectSetting>& inDefaults)
+    : Name(inName)
+    , Description(inDescription)
+    , DefaultSettings(inDefaults)
+    , bEnabled(false)
+    , bRegistered(false)
+    , GpuTimeMs(0.0f)
+{
+}
+
 IVulkanEffect::~IVulkanEffect()
 {
     DestroyResources();
@@ -144,12 +156,7 @@ void IVulkanEffect::LoadShaderModule()
 
 void IVulkanEffect::RegisterMenuSettings()
 {
-    if (!TheSettingManager)
-    {
-        return;
-    }
-
-    TheSettingManager->RegisterVulkanEffectDefaults(GetName(), GetDescription(), GetDefaultSettings());
+    EnsureRegistered();
     RefreshMenuSettings();
 }
 
@@ -160,7 +167,9 @@ void IVulkanEffect::RefreshMenuSettings()
         return;
     }
 
-    bEnabled = TheSettingManager->GetMenuShaderEnabled(GetName());
+    EnsureRegistered();
+
+    bEnabled = TheSettingManager->GetMenuShaderEnabled(Name);
 
     if (bEnabled)
     {
@@ -179,6 +188,18 @@ std::string IVulkanEffect::GetSettingsSection(const std::string& SubSection) con
     Section += ".";
     Section += SubSection;
     return Section;
+}
+
+void IVulkanEffect::EnsureRegistered()
+{
+    if (bRegistered || !TheSettingManager)
+    {
+        return;
+    }
+
+    TheSettingManager->RegisterVulkanEffectDefaults(Name, Description, DefaultSettings);
+    TheSettingManager->RegisterVulkanEffectMenuEntry(Name, &bEnabled, &GpuTimeMs);
+    bRegistered = true;
 }
 
 void IVulkanEffect::CreateTimingQueries()

@@ -287,6 +287,7 @@ struct SettingsWeatherStruct {
 typedef std::map<std::string, SettingsWaterStruct> SettingsWaterMap;
 typedef std::map<std::string, SettingsColoringStruct> SettingsColoringMap;
 typedef std::map<std::string, SettingsWeatherStruct> SettingsWeatherMap;
+        std::vector<VulkanEffectMenuEntry>                    VulkanMenuEffects;
 typedef std::vector<std::string> StringList;
 typedef toml::basic_value<toml::preserve_comments, std::map, std::vector> tomlValue;
 
@@ -346,6 +347,14 @@ public:
 		std::string		DefaultValue;
 		std::string		Description;
 	};
+        struct VulkanEffectMenuEntry
+        {
+                std::string Name;
+                std::string ConfigPath;
+                bool*       EnabledPtr = nullptr;
+                float*      GpuTimePtr = nullptr;
+        }
+
 
 	static void				Initialize();
 	void					LoadSettings();
@@ -371,6 +380,9 @@ public:
 	void					CreateNode(Configuration::ConfigNode* Node, const char* Section, const char* Key, bool Value, bool Reboot);
 	void					CreateNodeS(Configuration::ConfigNode* Node, const char* Section, const char* Key, const char* Value, bool Reboot);
 	void					RegisterVulkanEffectDefaults(const std::string& EffectName, const std::string& Description, const std::vector<VulkanEffectSetting>& Settings);
+        void RegisterVulkanEffectMenuEntry(const std::string& effectName, bool* enabledPtr, float* gpuTimePtr);
+        bool GetMenuShaderEnabled(const std::string& effectName) const;
+        void SetMenuShaderEnabled(const std::string& effectName, bool enabled);
 	bool					GetMenuShaderEnabled(const char* Name);
 	void					SetMenuShaderEnabled(const char* Name, bool enabled);
 	bool					GetMenuMiscEnabled(const char* Name);
@@ -380,6 +392,7 @@ public:
 	SettingsWeatherStruct*	GetSettingsWeather(const char* WeatherName);
 	void					SetSettingsWeather(TESWeather* Weather);
 	bool					IsShaderForced(const char* Name);
+        const VulkanEffectMenuEntry*             FindVulkanMenuEntry(const std::string& effectName) const;
 
 	template <typename T> static std::string	ToString(const T Value);
 	template <typename T> static T				FromString(const char* Value);

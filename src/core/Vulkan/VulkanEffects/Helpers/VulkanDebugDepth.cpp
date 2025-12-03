@@ -1,11 +1,15 @@
  #include "VulkanDebugDepth.h"
 
-// If you use the factory macro:
-// REGISTER_VULKAN_EFFECT(FVulkanDebugDepthEffect,
-//     EVulkanEffectPhase::PreTonemap,
-//     3); // order: before AO etc.
+// Factory macro:
+REGISTER_VULKAN_EFFECT(FVulkanDebugDepthEffect,
+    EVulkanEffectPhase::PreTonemap,
+    3); // order: before AO etc.
 
 FVulkanDebugDepthEffect::FVulkanDebugDepthEffect()
+    : IVulkanEffect(
+          "CombineDepth",
+          "Vulkan debug depth overlay",
+          {})
 {
     SpirvPath = "Data\\Shaders\\NewVegasReloaded\\Vulkan\\CombineDepth.comp.spv";
 }
@@ -101,6 +105,10 @@ void FVulkanDebugDepthEffect::CreateDescriptorSets()
 
     VK_CHECK(p_vkAllocateDescriptorSets(Device, &AllocInfo, &EffectDescriptorSet),
         "vkAllocateDescriptorSets(CombineDepth)");
+}
+
+void FVulkanDebugDepthEffect::UpdateSettingsFromNvr()
+{
 }
 
 void FVulkanDebugDepthEffect::CreateInteropTextures()

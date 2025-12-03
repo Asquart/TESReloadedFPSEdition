@@ -1250,42 +1250,112 @@ void SettingManager::RegisterVulkanEffectDefaults(const std::string& EffectName,
         hasUnsavedChanges = true;
 }
 
+void SettingManager::RegisterVulkanEffectMenuEntry(const std::string& effectName, bool* enabledPtr, float* gpuTimePtr)
+{
+        if (!Config.configLoaded) Config.Init();
+
+        for (auto& e : VulkanMenuEffects) {
+                if (e.Name == effectName) {
+                        e.EnabledPtr = enabledPtr;
+                        e.GpuTimePtr = gpuTimePtr;
+
+                        if (enabledPtr) {
+                                bool enabled = static_cast<bool>(GetSettingI(("Shaders." + effectName + ".Status").c_str(), "Enabled"));
+                                *enabledPtr = enabled;
+                        }
+                        return;
+                }
+        }
+
+        VulkanEffectMenuEntry entry;
+        entry.Name = effectName;
+        entry.ConfigPath = "Shaders." + effectName + ".Status";
+        entry.EnabledPtr = enabledPtr;
+        entry.GpuTimePtr = gpuTimePtr;
+
+        bool enabled = static_cast<bool>(GetSettingI(entry.ConfigPath.c_str(), "Enabled"));
+        if (entry.EnabledPtr) {
+                *entry.EnabledPtr = enabled;
+        }
+
+        VulkanMenuEffects.push_back(std::move(entry));
+}
+
+const SettingManager::VulkanEffectMenuEntry* SettingManager::FindVulkanMenuEntry(const std::string& effectName) const
+{
+        for (const auto& e : VulkanMenuEffects) {
+                if (e.Name == effectName) {
+                        return &e;
+                }
+        }
+        return nullptr;
+}
+
+bool SettingManager::GetMenuShaderEnabled(const std::string& effectName) const
+{
+        if (!Config.configLoaded) const_cast<SettingManager*>(this)->Config.Init();
+
+        for (const auto& e : VulkanMenuEffects) {
+                if (e.Name == effectName) {
+                        return static_cast<bool>(const_cast<SettingManager*>(this)->GetSettingI(e.ConfigPath.c_str(), "Enabled"));
+                }
+        }
+
+        char settingString[256];
+        strcpy(settingString, "Shaders.");
+        strcat(settingString, effectName.c_str());
+
+        char path[256] = "_";
+        strcat(path, settingString);
+        StringList keys;
+        SplitString(path, ".", &keys);
+        auto section = Config.FindSection(const_cast<tomlValue*>(&Config.TomlConfig), &keys);
+
+        SplitString(path, ".", &keys);
+        auto defaultSection = Config.FindSection(const_cast<tomlValue*>(&Config.DefaultConfig), &keys);
+
+        if (!section && !defaultSection) {
+                Logger::Log("No Shader setting for %s, defaults to true", settingString);
+                return true;
+        }
+
+        strcat(settingString, ".Status");
+        bool enabled = static_cast<bool>(const_cast<SettingManager*>(this)->GetSettingI(settingString, "Enabled"));
+        if (!enabled && const_cast<SettingManager*>(this)->IsShaderForced(effectName.c_str())) {
+                const_cast<SettingManager*>(this)->SetMenuShaderEnabled(effectName, true);
+                enabled = true;
+        }
+        return enabled;
+}
+
+void SettingManager::SetMenuShaderEnabled(const std::string& effectName, bool enabled)
+{
+        for (auto& e : VulkanMenuEffects) {
+                if (e.Name == effectName) {
+                        SetSetting(e.ConfigPath.c_str(), "Enabled", enabled);
+                        if (e.EnabledPtr) {
+                                *e.EnabledPtr = enabled;
+                        }
+                        SettingsChanged = true;
+                        hasUnsavedChanges = true;
+                        return;
+                }
+        }
+
+        char settingString[256];
+        strcpy(settingString, "Shaders.");
+        strcat(settingString, effectName.c_str());
+        strcat(settingString, ".Status");
+        SetSetting(settingString, "Enabled", enabled);
+}
+
 bool SettingManager::GetMenuShaderEnabled(const char* Name) {
-	char settingString[256];
-	strcpy(settingString, "Shaders.");
-	strcat(settingString, Name);
-
-	// handle enabling shaders that don't appear in settings (always on)
-	char path[256] = "_";
-	strcat(path, settingString);
-	StringList keys;
-	SplitString(path, ".", &keys);
-	auto section = Config.FindSection(&Config.TomlConfig, &keys);
-
-	SplitString(path, ".", &keys);
-	auto defaultSection = Config.FindSection(&Config.DefaultConfig, &keys);
-
-	if (!section && !defaultSection) {
-		Logger::Log("No Shader setting for %s, defaults to true", settingString);
-		return true;
-	}
-
-	strcat(settingString, ".Status");
-        bool enabled = static_cast<bool>(GetSettingI(settingString, "Enabled"));
-	if (!enabled && IsShaderForced(Name)) {
-		SetMenuShaderEnabled(Name, true);
-		enabled = true;
-	}
-	return enabled;
+        return GetMenuShaderEnabled(std::string(Name));
 }
 
 
 void SettingManager::SetMenuShaderEnabled(const char* Name, bool enabled) {
-	char settingString[256];
-	strcpy(settingString, "Shaders.");
-	strcat(settingString, Name);
-	strcat(settingString, ".Status");
-	SetSetting(settingString, "Enabled", enabled);
+        SetMenuShaderEnabled(std::string(Name), enabled);
 }
 
 bool SettingManager::GetMenuMiscEnabled(const char* Name) {

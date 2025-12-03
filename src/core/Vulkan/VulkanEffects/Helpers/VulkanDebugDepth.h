@@ -5,11 +5,6 @@
 class FVulkanDebugDepthEffect : public IVulkanEffect
 {
 public:
-    virtual const char* GetName() const override
-    {
-        return "CombineDepth";
-    }
-
     FVulkanDebugDepthEffect();
 
     // Depth should be ready before AO etc., so PreTonemap is reasonable
@@ -27,6 +22,7 @@ protected:
     virtual void CreatePipeline() override;
     virtual void CreateDescriptorSets() override;
     virtual void CreateInteropTextures() override;
+    virtual void UpdateSettingsFromNvr() override;
 
 private:
     void CreateOutputSurfaceIfNeeded(uint32_t Width, uint32_t Height);

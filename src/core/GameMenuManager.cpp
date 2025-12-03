@@ -371,12 +371,22 @@ void GameMenuManager::HandleInput() {
 			// handle value add/subtract keys
 			//Logger::Log("Add for %s.%s, isShader Section? %i, isStatusSection? %i, Column %i",SelectedNode.Section, SelectedNode.Key, isShaderSection, isStatusSection, SelectedColumn);
 
-			// react to user key input to reduce the value of the setting
-			if (isShaderSection && (SelectedColumn == COLUMNS::CATEGORY || (SelectedColumn == COLUMNS::SETTINGS && isStatusSection))) {
-				// enable shaders and effects
-				bool ShaderEnabled = TheSettingManager->GetMenuShaderEnabled(SelectedNode.MidSection);
-				if (!ShaderEnabled) TheShaderManager->SwitchShaderStatus(SelectedNode.MidSection);
-			}
+                        // react to user key input to reduce the value of the setting
+                        if (isShaderSection && (SelectedColumn == COLUMNS::CATEGORY || (SelectedColumn == COLUMNS::SETTINGS && isStatusSection))) {
+                                // enable shaders and effects
+                                bool ShaderEnabled = TheSettingManager->GetMenuShaderEnabled(SelectedNode.MidSection);
+                                if (!ShaderEnabled) {
+                                        if (TheSettingManager->FindVulkanMenuEntry(SelectedNode.MidSection)) {
+                                                TheSettingManager->SetMenuShaderEnabled(SelectedNode.MidSection, true);
+                                                if (TheVulkanEffectsManager) {
+                                                        TheVulkanEffectsManager->RefreshEffectSettings();
+                                                }
+                                        }
+                                        else {
+                                                TheShaderManager->SwitchShaderStatus(SelectedNode.MidSection);
+                                        }
+                                }
+                        }
 			else if (SelectedColumn == COLUMNS::CATEGORY && isWeatherSection) {
 				TESWeather* Weather = (TESWeather*)DataHandler->GetFormByName(SelectedNode.MidSection, TESForm::FormType::kFormType_Weather);
 				Tes->sky->ForceWeather(Weather);
@@ -389,12 +399,22 @@ void GameMenuManager::HandleInput() {
 		else if (IsKeyPressed(MenuSettings.KeySubtract)) {
 			//Logger::Log("Subtract for %s.%s, isShader Section? %i, isStatusSection? %i, Column %i", SelectedNode.Section, SelectedNode.Key, isShaderSection, isStatusSection, SelectedColumn);
 
-			// react to user key input to reduce the value of the setting
-			if (isShaderSection && (SelectedColumn == COLUMNS::CATEGORY || (SelectedColumn == COLUMNS::SETTINGS && isStatusSection))) {
-				// disable shaders and effects
-				bool ShaderEnabled = TheSettingManager->GetMenuShaderEnabled(SelectedNode.MidSection);
-				if (ShaderEnabled && !TheSettingManager->IsShaderForced(SelectedNode.MidSection)) TheShaderManager->SwitchShaderStatus(SelectedNode.MidSection);
-			}
+                        // react to user key input to reduce the value of the setting
+                        if (isShaderSection && (SelectedColumn == COLUMNS::CATEGORY || (SelectedColumn == COLUMNS::SETTINGS && isStatusSection))) {
+                                // disable shaders and effects
+                                bool ShaderEnabled = TheSettingManager->GetMenuShaderEnabled(SelectedNode.MidSection);
+                                if (ShaderEnabled && !TheSettingManager->IsShaderForced(SelectedNode.MidSection)) {
+                                        if (TheSettingManager->FindVulkanMenuEntry(SelectedNode.MidSection)) {
+                                                TheSettingManager->SetMenuShaderEnabled(SelectedNode.MidSection, false);
+                                                if (TheVulkanEffectsManager) {
+                                                        TheVulkanEffectsManager->RefreshEffectSettings();
+                                                }
+                                        }
+                                        else {
+                                                TheShaderManager->SwitchShaderStatus(SelectedNode.MidSection);
+                                        }
+                                }
+                        }
 			else if (SelectedColumn == COLUMNS::SETTINGS) {
 				TheSettingManager->Decrement(SelectedNode.Section, SelectedNode.Key);
 			}
@@ -542,46 +562,55 @@ void GameMenuManager::Render() {
 
 		int pos = DrawShadowedText(Sections[i].c_str(), 0, lineYPos, ItemColumnWidth, textColor, Font, DT_LEFT);
 
-		// if in shader mode, add indication wether each shader is activated
-		if (isShaderSection) {
-			bool enabled = TheSettingManager->GetMenuShaderEnabled(Sections[i].c_str());
-			if (enabled) textColor = TextColorEnabled;
+                // if in shader mode, add indication wether each shader is activated
+                if (isShaderSection) {
+                        const SettingManager::VulkanEffectMenuEntry* vulkanEntry = TheSettingManager->FindVulkanMenuEntry(Sections[i]);
+                        bool enabled = TheSettingManager->GetMenuShaderEnabled(Sections[i].c_str());
+                        if (enabled) textColor = TextColorEnabled;
 
-			DrawShadowedText(enabled ? "ENABLED" : "DISABLED", pos + 1, lineYPos, 100, textColor, FontStatus, DT_LEFT);
+                        DrawShadowedText(enabled ? "ENABLED" : "DISABLED", pos + 1, lineYPos, 100, textColor, FontStatus, DT_LEFT);
 
-			// show render time for effect if debug mode enabled
-                        EffectRecord* effect = TheShaderManager->GetEffectByName(Sections[i].c_str());
-                        if (effect && TheSettingManager->SettingsMain.Develop.DebugMode) {
-                                std::stringstream ss;
-
-                                float total = max(effect->renderTime + effect->constantUpdateTime, 0);
-
-                                // in the case of Shadows, we add the time spent rendering the shadows buffer and shadow maps
-                                if ((effect == TheShaderManager->Effects.ShadowsExteriors && TheShaderManager->GameState.isExterior)||
-                                        (effect == TheShaderManager->Effects.ShadowsInteriors && !TheShaderManager->GameState.isExterior)) {
-
-                                        total += TheShaderManager->Effects.PointShadows->renderTime;
-                                        total += TheShaderManager->Effects.PointShadows2->renderTime;
-                                        total += TheShaderManager->Effects.SunShadows->renderTime;
-                                        total += TheShadowManager->shadowMapsRenderTime;
+                        if (TheSettingManager->SettingsMain.Develop.DebugMode) {
+                                float gpuMs = 0.0f;
+                                bool hasGpuTime = vulkanEntry && vulkanEntry->GpuTimePtr;
+                                if (hasGpuTime) {
+                                        gpuMs = *vulkanEntry->GpuTimePtr;
                                 }
 
-                                if (!TheSettingManager->SettingsMain.Main.RenderEffects) total = 0;
-
-                                ss << std::fixed << std::setprecision(4) << total;
-                                std::string duration = ss.str();
-                                duration += " ms";
-
-                                DrawShadowedText(duration.c_str(), 0, lineYPos, ItemColumnWidth - textSize, TextColorNormal, FontNormal, DT_RIGHT);
-                        }
-                        else if (TheVulkanEffectsManager && TheSettingManager->SettingsMain.Develop.DebugMode) {
-                                if (IVulkanEffect* vulkanEffect = TheVulkanEffectsManager->FindEffectByName(Sections[i])) {
+                                if (hasGpuTime) {
                                         std::stringstream ss;
-                                        ss << std::fixed << std::setprecision(4) << vulkanEffect->GetGpuTimeMs();
+                                        ss << std::fixed << std::setprecision(4) << gpuMs;
                                         std::string duration = ss.str();
                                         duration += " ms";
 
                                         DrawShadowedText(duration.c_str(), 0, lineYPos, ItemColumnWidth - textSize, TextColorNormal, FontNormal, DT_RIGHT);
+                                }
+                                else {
+                                        // show render time for effect if debug mode enabled
+                                        EffectRecord* effect = TheShaderManager->GetEffectByName(Sections[i].c_str());
+                                        if (effect) {
+                                                std::stringstream ss;
+
+                                                float total = max(effect->renderTime + effect->constantUpdateTime, 0);
+
+                                                // in the case of Shadows, we add the time spent rendering the shadows buffer and shadow maps
+                                                if ((effect == TheShaderManager->Effects.ShadowsExteriors && TheShaderManager->GameState.isExterior)||
+                                                        (effect == TheShaderManager->Effects.ShadowsInteriors && !TheShaderManager->GameState.isExterior)) {
+
+                                                        total += TheShaderManager->Effects.PointShadows->renderTime;
+                                                        total += TheShaderManager->Effects.PointShadows2->renderTime;
+                                                        total += TheShaderManager->Effects.SunShadows->renderTime;
+                                                        total += TheShadowManager->shadowMapsRenderTime;
+                                                }
+
+                                                if (!TheSettingManager->SettingsMain.Main.RenderEffects) total = 0;
+
+                                                ss << std::fixed << std::setprecision(4) << total;
+                                                std::string duration = ss.str();
+                                                duration += " ms";
+
+                                                DrawShadowedText(duration.c_str(), 0, lineYPos, ItemColumnWidth - textSize, TextColorNormal, FontNormal, DT_RIGHT);
+                                        }
                                 }
                         }
                 }

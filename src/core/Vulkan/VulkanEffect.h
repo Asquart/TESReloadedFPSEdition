@@ -19,10 +19,14 @@ enum class EVulkanEffectPhase : uint8_t
 class IVulkanEffect
 {
 public:
+    IVulkanEffect(const std::string& inName,
+                  const std::string& inDescription,
+                  const std::vector<SettingManager::VulkanEffectSetting>& inDefaults);
+
     virtual ~IVulkanEffect();
 
-    virtual const char* GetName() const = 0;
-    virtual const char* GetDescription() const { return ""; }
+    const std::string& GetName() const { return Name; }
+    const std::string& GetDescription() const { return Description; }
     virtual EVulkanEffectPhase GetPhase() const = 0;
 
     virtual void Initialize();
@@ -36,7 +40,6 @@ public:
 
     const char* SpirvPath = "";
 
-    virtual std::vector<SettingManager::VulkanEffectSetting> GetDefaultSettings() const { return {}; }
     void RegisterMenuSettings();
     void RefreshMenuSettings();
     bool IsEnabled() const { return bEnabled; }
@@ -59,13 +62,13 @@ protected:
     bool bFenceInUse = false;
     VkQueryPool TimingQueryPool = VK_NULL_HANDLE;
     bool bGpuTimingActive = false;
-    float GpuTimeMs = 0.0f;
-    bool bEnabled = true;
+    bool bEnabled = false;
+    bool bRegistered = false;
 
     virtual void CreateResources();
     virtual void DestroyResources();
 
-    virtual void UpdateSettingsFromNvr() {};
+    virtual void UpdateSettingsFromNvr() = 0;
     virtual void CreatePipeline() = 0;
     virtual void CreateDescriptorSets() = 0;
     virtual void CreateInteropTextures() = 0;
@@ -76,7 +79,16 @@ protected:
     void BeginGpuTimer();
     void EndGpuTimer();
     void ResolveGpuTime();
-}; 
+
+    void EnsureRegistered();
+
+    std::string Name;
+    std::string Description;
+    std::vector<SettingManager::VulkanEffectSetting> DefaultSettings;
+
+public:
+    float GpuTimeMs;
+};
 
 struct FVulkanEffectInfo
 {
@@ -116,7 +128,7 @@ public:
 template<typename TEffect>
 struct TVulkanEffectRegistrar
 {
-    TVulkanEffectRegistrar(const char* Name,
+    TVulkanEffectRegistrar(const std::string& Name,
         EVulkanEffectPhase Phase,
         int Order)
     {
