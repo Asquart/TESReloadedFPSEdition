@@ -17,28 +17,67 @@ if (!TheRenderManager->DXVK)    \
 
 #define VULKAN_CONTEXT TheVulkanEffectsManager->VulkanContext
 
-#define TRY_APPLY_FENCE(InVulkanEffect)\
-    if (InVulkanEffect->EffectFence != VK_NULL_HANDLE) \
-    { \
-        p_vkResetFences(VULKAN_CONTEXT.Device, 1, &InVulkanEffect->EffectFence); \
-        InVulkanEffect->bFenceInUse = true; \
-    } \
+#define TRY_APPLY_FENCE(InVulkanEffect)                                     \
+    if ((InVulkanEffect)->EffectFence != VK_NULL_HANDLE)                    \
+    {                                                                       \
+        p_vkResetFences(VULKAN_CONTEXT.Device, 1, &(InVulkanEffect)->EffectFence); \
+        (InVulkanEffect)->bFenceInUse = true;                               \
+    }
 
-#define TRY_DEBUG_END_FENCE(InVulkanEffect)\
-    if (DEBUG) \
-    { \
-        if (InVulkanEffect->EffectFence != VK_NULL_HANDLE && InVulkanEffect->bFenceInUse) \
-        { \
-            p_vkWaitForFences(VULKAN_CONTEXT.Device, 1, &InVulkanEffect->EffectFence, VK_TRUE, UINT64_MAX); \
-            InVulkanEffect->bFenceInUse = false; \
-        } \
-    } \
+#define TRY_DEBUG_END_FENCE(InVulkanEffect)                                 \
+    if (DEBUG)                                                              \
+    {                                                                       \
+        if ((InVulkanEffect)->EffectFence != VK_NULL_HANDLE &&             \
+            (InVulkanEffect)->bFenceInUse)                                  \
+        {                                                                   \
+            /* Wait for GPU to finish */                                    \
+            p_vkWaitForFences(VULKAN_CONTEXT.Device, 1,                     \
+                              &(InVulkanEffect)->EffectFence,               \
+                              VK_TRUE, UINT64_MAX);                         \
+            (InVulkanEffect)->bFenceInUse = false;                          \
+                                                                            \
+            /* Read timestamp queries if available */                       \
+            if ((InVulkanEffect)->EffectQueryPool != VK_NULL_HANDLE)       \
+            {                                                               \
+                uint64_t timestamps[2] = {};                                \
+                VkResult qr = p_vkGetQueryPoolResults(                      \
+                    VULKAN_CONTEXT.Device,                                  \
+                    (InVulkanEffect)->EffectQueryPool,                      \
+                    (InVulkanEffect)->StartQueryIndex,                      \
+                    2,                                                      \
+                    sizeof(timestamps),                                     \
+                    timestamps,                                             \
+                    sizeof(uint64_t),                                       \
+                    VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);     \
+                                                                            \
+                if (qr == VK_SUCCESS)                                       \
+                {                                                           \
+                    uint64_t startTicks = timestamps[0];                    \
+                    uint64_t endTicks   = timestamps[1];                    \
+                    if (endTicks > startTicks)                              \
+                    {                                                       \
+                        double deltaTicks = double(endTicks - startTicks);  \
+                        /* timestampPeriod is in nanoseconds per tick */    \
+                        double nsPerTick = VULKAN_CONTEXT.TimestampPeriod; \
+                        double timeMs    = (deltaTicks * nsPerTick) / 1.0e6; \
+                        (InVulkanEffect)->SetGpuTimeMs(                     \
+                            static_cast<float>(timeMs));                    \
+                    }                                                       \
+                }                                                           \
+            }                                                               \
+        }                                                                   \
+    }
 
-#define ENSURE_END_FENCE(InVulkanEffect)\
-    if ((InVulkanEffect->EffectFence) != VK_NULL_HANDLE && (InVulkanEffect->bFenceInUse)) { \
-            p_vkWaitForFences(VULKAN_CONTEXT.Device, 1, &(InVulkanEffect->EffectFence), VK_TRUE, UINT64_MAX); \
-            (InVulkanEffect->bFenceInUse) = false;                 \
-        }     
+#define ENSURE_END_FENCE(InVulkanEffect)                                    \
+    if ((InVulkanEffect)->EffectFence != VK_NULL_HANDLE &&                  \
+        (InVulkanEffect)->bFenceInUse)                                      \
+    {                                                                       \
+        p_vkWaitForFences(VULKAN_CONTEXT.Device, 1,                         \
+                          &(InVulkanEffect)->EffectFence,                   \
+                          VK_TRUE, UINT64_MAX);                             \
+        (InVulkanEffect)->bFenceInUse = false;                              \
+    }
+
 
 struct FVulkanContext
 {

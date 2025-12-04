@@ -1,6 +1,47 @@
 /*
 * Class that wraps an effect shader, in order to load it/render it/set constants.
 */
+
+// Global/shared DX9 GPU timing state
+static bool   g_Dx9GpuTimingInit = false;
+static double g_Dx9TicksToMs     = 0.0;
+
+// Helper: one-time initialization of timestamp frequency
+static void DX9_InitGpuTiming(IDirect3DDevice9* device)
+{
+	if (g_Dx9GpuTimingInit)
+		return;
+
+	IDirect3DQuery9* freqQuery = nullptr;
+	if (FAILED(device->CreateQuery(D3DQUERYTYPE_TIMESTAMPFREQ, &freqQuery)) || !freqQuery)
+		return;
+
+	freqQuery->Issue(D3DISSUE_END);
+
+	UINT64 freq = 0;
+	HRESULT hr;
+	int tries = 0;
+	const int maxTries = 1000;
+
+	do {
+		hr = freqQuery->GetData(&freq, sizeof(freq), D3DGETDATA_FLUSH);
+		if (hr == S_OK) break;
+		if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG) break;
+		::Sleep(0);
+	} while (++tries < maxTries);
+
+	freqQuery->Release();
+
+	if (hr == S_OK && freq > 0) {
+		g_Dx9TicksToMs     = 1000.0 / static_cast<double>(freq);
+		g_Dx9GpuTimingInit = true;
+	}
+	else {
+		g_Dx9TicksToMs     = 0.0;
+		g_Dx9GpuTimingInit = false;
+	}
+}
+
 EffectRecord::EffectRecord(const char* effectName) {
 
 	Name = effectName;
@@ -344,40 +385,133 @@ bool EffectRecord::SwitchEffect() {
 	return Enabled;
 }
 
+void EffectRecord::BeginGpuTiming(IDirect3DDevice9* Device)
+{
+    if (!DEBUG || !TheRenderManager->DXVK)
+        return;
+    if (!g_Dx9GpuTimingInit || g_Dx9TicksToMs <= 0.0)
+        return;
+
+    // 1) Try to resolve the *previous* slot (non-blocking-ish)
+    GpuQuerySlot& prevSlot = gpuSlots[gpuSlotIndex];
+    if (prevSlot.pending && prevSlot.start && prevSlot.end)
+    {
+        UINT64 startTicks = 0;
+        UINT64 endTicks   = 0;
+
+        HRESULT hrStart = prevSlot.start->GetData(&startTicks, sizeof(startTicks), 0);
+        HRESULT hrEnd   = prevSlot.end->GetData(&endTicks,   sizeof(endTicks),
+                                                D3DGETDATA_FLUSH);
+
+        if (hrStart == S_OK && hrEnd == S_OK && endTicks > startTicks)
+        {
+            double deltaTicks = double(endTicks - startTicks);
+            gpuRenderTimeMs   = float(deltaTicks * g_Dx9TicksToMs);
+        }
+
+        // Whether successful or not, this slot is no longer pending once GPU reached it
+        if (hrStart == S_OK || hrStart == D3DERR_DEVICELOST || hrStart == D3DERR_DEVICEHUNG ||
+            hrEnd   == S_OK || hrEnd   == D3DERR_DEVICELOST   || hrEnd   == D3DERR_DEVICEHUNG)
+        {
+            prevSlot.pending = false;
+        }
+    }
+
+    // 2) Advance to a new slot for this frame
+    gpuSlotIndex = (gpuSlotIndex + 1) % GPU_QUERY_SLOTS;
+    GpuQuerySlot& curSlot = gpuSlots[gpuSlotIndex];
+
+    if (!curSlot.start)
+        Device->CreateQuery(D3DQUERYTYPE_TIMESTAMP, &curSlot.start);
+    if (!curSlot.end)
+        Device->CreateQuery(D3DQUERYTYPE_TIMESTAMP, &curSlot.end);
+
+    if (curSlot.start && curSlot.end)
+    {
+        curSlot.start->Issue(D3DISSUE_END); // "start" timestamp
+        curSlot.pending = false;            // will be set true in EndGpuTiming
+    }
+}
+
+void EffectRecord::EndGpuTiming()
+{
+    if (!DEBUG || !TheRenderManager->DXVK)
+        return;
+    if (!g_Dx9GpuTimingInit || g_Dx9TicksToMs <= 0.0)
+        return;
+
+    GpuQuerySlot& curSlot = gpuSlots[gpuSlotIndex];
+    if (curSlot.end && curSlot.start)
+    {
+        curSlot.end->Issue(D3DISSUE_END); // "end" timestamp
+        curSlot.pending = true;           // will be resolved on next BeginGpuTiming()
+    }
+}
 
 /**
 * Renders the given effect shader.
 */
-void EffectRecord::Render(IDirect3DDevice9* Device, IDirect3DSurface9* RenderTarget, IDirect3DSurface9* RenderedSurface, UINT techniqueIndex, bool ClearRenderTarget, IDirect3DSurface9* SourceBuffer) {
+void EffectRecord::Render(IDirect3DDevice9* Device,
+                          IDirect3DSurface9* RenderTarget,
+                          IDirect3DSurface9* RenderedSurface,
+                          UINT techniqueIndex,
+                          bool ClearRenderTarget,
+                          IDirect3DSurface9* SourceBuffer)
+{
+    if (!Enabled || Effect == nullptr || !ShouldRender()) {
+        renderTime = 0.0f;
+        return;
+    }
 
-	if (!Enabled || Effect == nullptr || !ShouldRender()) {
-		renderTime = 0.0f;
-		return; // skip rendering of disabled effects
-	}
+    auto timer = TimeLogger();
 
-	//gQueryStart->Issue(D3DISSUE_END);
-	auto timer = TimeLogger();
-	if (SourceBuffer) Device->StretchRect(RenderTarget, NULL, SourceBuffer, NULL, D3DTEXF_LINEAR);
+    // Init global GPU timing once (if DXVK+DEBUG)
+    if (DEBUG && TheRenderManager->DXVK)
+        DX9_InitGpuTiming(Device);
 
-	try {
-		D3DXHANDLE technique = Effect->GetTechnique(techniqueIndex);
-		Effect->SetTechnique(technique);
-		SetCT(); // update the constant table
-		UINT Passes;
-		Effect->Begin(&Passes, NULL);
-		for (UINT p = 0; p < Passes; p++) {
-			if (ClearRenderTarget) Device->Clear(0L, NULL, D3DCLEAR_TARGET, D3DCOLOR_ARGB(255, 0, 0, 0), 1.0f, 0L);
-			Effect->BeginPass(p);
-			Device->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
-			Effect->EndPass();
-			if (RenderedSurface) Device->StretchRect(RenderTarget, NULL, RenderedSurface, NULL, D3DTEXF_LINEAR); // copy the result from the pass into the texture
-		}
-		Effect->End();
-	}
-	catch (const std::exception& e) {
-		Logger::Log("Error during rendering of effect %s: %s", Name, e.what());
-	}
+    // Begin GPU timing (reads previous slot’s result + starts new one)
+    BeginGpuTiming(Device);
 
-	std::string name = "EffectRecord::Render " + std::string(Name);
-	renderTime = timer.LogTime(name.c_str());
+    if (SourceBuffer)
+        Device->StretchRect(RenderTarget, NULL, SourceBuffer, NULL, D3DTEXF_LINEAR);
+
+    try {
+        D3DXHANDLE technique = Effect->GetTechnique(techniqueIndex);
+        Effect->SetTechnique(technique);
+        SetCT(); // update constants
+
+        UINT Passes;
+        Effect->Begin(&Passes, NULL);
+        for (UINT p = 0; p < Passes; p++) {
+            if (ClearRenderTarget)
+                Device->Clear(0L, NULL, D3DCLEAR_TARGET,
+                              D3DCOLOR_ARGB(255, 0, 0, 0), 1.0f, 0L);
+
+            Effect->BeginPass(p);
+            Device->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
+            Effect->EndPass();
+
+            if (RenderedSurface)
+                Device->StretchRect(RenderTarget, NULL, RenderedSurface, NULL, D3DTEXF_LINEAR);
+        }
+        Effect->End();
+    }
+    catch (const std::exception& e) {
+        Logger::Log("Error during rendering of effect %s: %s", Name, e.what());
+    }
+
+    // End GPU timing (marks current slot pending)
+    EndGpuTiming();
+
+    std::string name = "EffectRecord::Render " + std::string(Name);
+    float cpuMs = timer.LogTime(name.c_str());
+
+    if (DEBUG && TheRenderManager->DXVK && g_Dx9GpuTimingInit && g_Dx9TicksToMs > 0.0) {
+        // Prefer last known GPU time, but don’t block for it
+        renderTime = gpuRenderTimeMs;
+        Logger::Log("%s GPU: %.3f ms (CPU: %.3f ms)", Name, gpuRenderTimeMs, cpuMs);
+    } else {
+        renderTime = cpuMs;
+    }
 }
+

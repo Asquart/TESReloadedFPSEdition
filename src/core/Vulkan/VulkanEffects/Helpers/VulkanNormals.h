@@ -2,42 +2,67 @@
 
 #include "../../VulkanEffect.h"
 
-class FVulkanNormals : public IVulkanEffect
+// Push constants (not exposed to menu; Pass stays internal for now)
+struct FVulkanNormalsPushConstants
+{
+    UINT Pass = 0;
+};
+
+// Dummy settings (visible in menu, not yet used by shader)
+struct FVulkanNormalsSettings
+{
+    float DummyStrength = 1.0f;
+    int   DummySamples  = 8;
+    bool  bDebugView    = false;
+};
+
+class FVulkanNormals
+    : public FComputeEffectWithSettings<FVulkanNormalsSettings, FVulkanNormalsPushConstants>
 {
 public:
-    virtual const char* GetName() const override
-    {
-        return "VulkanNormals";
-    }
+    const char* GetName() const override               { return "VulkanNormals"; }
+    const char* GetSpirvFileName() const override      { return "Normals.comp.spv"; }
 
     FVulkanNormals();
 
-    // Depth should be ready before AO etc., so PreTonemap is reasonable
-    virtual EVulkanEffectPhase GetPhase() const override
+    EVulkanEffectPhase GetPhase() const override
     {
         return EVulkanEffectPhase::PreTonemap;
     }
 
-    virtual void SubmitRendering() override;
-    virtual void CompleteRendering(IDirect3DSurface9* SceneColor) override;
+    // Optional: convenient access from code
+    const FVulkanNormalsSettings& GetSettingsStruct() const { return Settings; }
+    FVulkanNormalsSettings&       GetSettingsStruct()       { return Settings; }
 
 protected:
     // IVulkanEffect overrides
-    virtual void DestroyResources() override;
-    virtual void CreatePipeline() override;
-    virtual void CreateDescriptorSets() override;
-    void UpdateDescriptorsForPass(uint32_t InPass);
-    virtual void CreateInteropTextures() override;
+    void DestroyResources() override;
+    void CreatePipeline() override;
+    void CreateDescriptorSets() override;
+    void CreateInteropTextures() override;
+    void CompleteRendering(IDirect3DSurface9* SceneColor) override;
+    void UpdateSettingsFromNvr() override;
+
+    // FComputeEffectBase overrides
+    uint32_t   GetPassCount() const override { return 3; } // example: 3 passes
+    VkExtent2D GetDispatchExtent() const override;
+    bool       PrepareResourcesForSubmit() override;
+    void       RecordPassCommands(VkCommandBuffer cmd,
+                                  uint32_t passIndex,
+                                  uint32_t groupsX,
+                                  uint32_t groupsY) override;
+    void       OnAfterPass(VkCommandBuffer cmd, uint32_t passIndex) override;
+
+    // FComputeEffectWithSettings override:
+    void FillPushConstants(FVulkanNormalsPushConstants& out,
+                           const FVulkanNormalsSettings& src,
+                           uint32_t passIndex) const override;
 
 private:
+    void UpdateDescriptorsForPass(uint32_t InPass);
     void CreateOutputSurfaceIfNeeded(uint32_t Width, uint32_t Height);
     void CreateTemporaryPassIfNeeded(uint32_t Width, uint32_t Height);
-
-    // Dummy push constants struct to serve as an example
-    struct FPushConstants
-    {
-        UINT Pass = 0;
-    };
+    void BuildSettingsDescriptors();
 
     FVulkanInteropSurface OutputSurface;
     FVulkanInteropSurface TemporarySurface;

@@ -7,16 +7,147 @@ REGISTER_VULKAN_EFFECT(FVulkanNormals,
 
 FVulkanNormals::FVulkanNormals()
 {
-    SpirvPath = "Data\\Shaders\\NewVegasReloaded\\Vulkan\\Normals.comp.spv";
+    BuildSettingsDescriptors();
+}
+
+void FVulkanNormals::FillPushConstants(FVulkanNormalsPushConstants& out,
+                                       const FVulkanNormalsSettings& /*src*/,
+                                       uint32_t passIndex) const
+{
+    // Only Pass for now; settings are not wired to shader yet.
+    out.Pass = passIndex;
+
+    // Later can do e.g.:
+    // out.SomeParam = src.DummyStrength;
 }
 
 void FVulkanNormals::DestroyResources()
 {
-    DXVK_CheckReturn()
-        IVulkanEffect::DestroyResources();
-    // Interop surfaces cleanup
+    DXVK_CheckReturn();
+
+    // First clean up our own surfaces
     TheVulkanEffectsManager->InteropManager.DestroySurface(OutputSurface);
+    TheVulkanEffectsManager->InteropManager.DestroySurface(TemporarySurface);
+
+    // Then clean up generic Vulkan stuff (pipeline, descriptor pool, etc.)
+    IVulkanEffect::DestroyResources();
 }
+
+
+VkExtent2D FVulkanNormals::GetDispatchExtent() const
+{
+    FVulkanInteropSurface* VulkanDepthSurface = TheVulkanEffectsManager->GetDepthSurface();
+    if (!VulkanDepthSurface)
+        return VkExtent2D{ 0, 0 };
+
+    return VkExtent2D{ VulkanDepthSurface->Width, VulkanDepthSurface->Height };
+}
+
+bool FVulkanNormals::PrepareResourcesForSubmit()
+{
+    FVulkanInteropSurface* VulkanDepthSurface = TheVulkanEffectsManager->GetDepthSurface();
+    if (!VulkanDepthSurface || !VulkanDepthSurface->View) {
+        Logger::Log("FVulkanNormals::PrepareResourcesForSubmit: depth surface invalid");
+        return false;
+    }
+
+    CreateOutputSurfaceIfNeeded(VulkanDepthSurface->Width, VulkanDepthSurface->Height);
+    if (!OutputSurface.D3DSurface || !OutputSurface.Image || !OutputSurface.View) {
+        Logger::Log("FVulkanNormals::PrepareResourcesForSubmit: output surface invalid");
+        return false;
+    }
+
+    CreateTemporaryPassIfNeeded(VulkanDepthSurface->Width, VulkanDepthSurface->Height);
+    if (!TemporarySurface.D3DSurface || !TemporarySurface.Image || !TemporarySurface.View) {
+        Logger::Log("FVulkanNormals::PrepareResourcesForSubmit: temp surface invalid");
+        return false;
+    }
+
+    return true;
+}
+
+void FVulkanNormals::RecordPassCommands(VkCommandBuffer cmd,
+                                        uint32_t passIndex,
+                                        uint32_t groupsX,
+                                        uint32_t groupsY)
+{
+    UpdateDescriptorsForPass(passIndex);
+
+    // Bind global + effect descriptor sets
+    VkDescriptorSet sets[2];
+    sets[0] = TheVulkanEffectsManager->GlobalResources
+                  .GetGlobalDescriptorSets().GlobalFrameDescriptorSet; // set 0
+    sets[1] = EffectDescriptorSet;                                     // set 1
+
+    p_vkCmdBindDescriptorSets(
+        cmd,
+        VK_PIPELINE_BIND_POINT_COMPUTE,
+        EffectPipelineLayout,
+        0,
+        2,
+        sets,
+        0,
+        nullptr);
+
+    // Push constants + dispatch via the helper from FComputeEffectWithSettings
+    PushConstantsAndDispatch(cmd, passIndex, groupsX, groupsY);
+}
+
+
+void FVulkanNormals::OnAfterPass(VkCommandBuffer cmd, uint32_t passIndex)
+{
+    if (passIndex == 0) {
+        // Pass 0 wrote OutputSurface, used as input in pass 1
+        VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.oldLayout     = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image         = OutputSurface.Image;
+        barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel   = 0;
+        barrier.subresourceRange.levelCount     = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount     = 1;
+
+        p_vkCmdPipelineBarrier(
+            cmd,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier);
+    }
+    else if (passIndex == 1) {
+        // Pass 1 wrote TemporarySurface, used as input in pass 2
+        VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.oldLayout     = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image         = TemporarySurface.Image;
+        barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel   = 0;
+        barrier.subresourceRange.levelCount     = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount     = 1;
+
+        p_vkCmdPipelineBarrier(
+            cmd,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier);
+    }
+}
+
 
 void FVulkanNormals::CreatePipeline()
 {
@@ -53,7 +184,7 @@ void FVulkanNormals::CreatePipeline()
     VkPushConstantRange PcRange{};
     PcRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     PcRange.offset     = 0;
-    PcRange.size       = sizeof(FPushConstants);
+    PcRange.size       = sizeof(FVulkanNormalsPushConstants);
 
     VkDescriptorSetLayout SetLayouts[2] = {
         TheVulkanEffectsManager->GlobalResources.GetGlobalDescriptorSets().GlobalFrameSetLayout, // set = 0
@@ -82,7 +213,6 @@ void FVulkanNormals::CreatePipeline()
     VK_CHECK(p_vkCreateComputePipelines(Device, VK_NULL_HANDLE, 1, &CpInfo, nullptr, &EffectPipeline),
         "vkCreateComputePipelines(VulkanNormals)");
 }
-
 
 void FVulkanNormals::CreateDescriptorSets()
 {
@@ -257,168 +387,57 @@ if (Width == 0 || Height == 0)
     );
 }
 
-void FVulkanNormals::SubmitRendering()
+void FVulkanNormals::BuildSettingsDescriptors()
 {
-    DXVK_CheckReturn();
+    SettingDescs.clear();
 
-    FVulkanInteropSurface* VulkanDepthSurface = TheVulkanEffectsManager->GetDepthSurface();
-    if (!VulkanDepthSurface || !VulkanDepthSurface->View) {
-        Logger::Log("FVulkanNormals::SubmitRendering: VulkanDepthSurface is invalid");
-        return;
+    // DummyStrength slider
+    {
+        VulkanSettingDescriptor d{};
+        d.id       = "DummyStrength";
+        d.label    = "Dummy Strength";
+        d.group    = "Main";
+        d.type     = VulkanSettingType::Float;
+        d.minValue = 0.0f;
+        d.maxValue = 2.0f;
+        d.step     = 0.05f;
+
+        d.getFloat = [this]() { return Settings.DummyStrength; };
+        d.setFloat = [this](float v) { Settings.DummyStrength = v; };
+
+        SettingDescs.push_back(std::move(d));
     }
 
-    // Create / validate output + temp surfaces
-    CreateOutputSurfaceIfNeeded(VulkanDepthSurface->Width, VulkanDepthSurface->Height);
-    if (!OutputSurface.D3DSurface || !OutputSurface.Image || !OutputSurface.View) {
-        Logger::Log("FVulkanNormals::SubmitRendering: OutputSurface not valid");
-        return;
+    // DummySamples slider
+    {
+        VulkanSettingDescriptor d{};
+        d.id       = "DummySamples";
+        d.label    = "Dummy Samples";
+        d.group    = "Main";
+        d.type     = VulkanSettingType::Int;
+        d.minValue = 1;
+        d.maxValue = 64;
+        d.step     = 1.0f;
+
+        d.getInt = [this]() { return Settings.DummySamples; };
+        d.setInt = [this](int v) { Settings.DummySamples = v; };
+
+        SettingDescs.push_back(std::move(d));
     }
 
-    CreateTemporaryPassIfNeeded(VulkanDepthSurface->Width, VulkanDepthSurface->Height);
-    if (!TemporarySurface.D3DSurface || !TemporarySurface.Image || !TemporarySurface.View) {
-        Logger::Log("FVulkanNormals::SubmitRendering: TemporarySurface not valid");
-        return;
+    // Debug checkbox
+    {
+        VulkanSettingDescriptor d{};
+        d.id       = "DebugView";
+        d.label    = "Debug View";
+        d.group    = "Debug";
+        d.type     = VulkanSettingType::Bool;
+
+        d.getBool = [this]() { return Settings.bDebugView; };
+        d.setBool = [this](bool v) { Settings.bDebugView = v; };
+
+        SettingDescs.push_back(std::move(d));
     }
-
-    // Lock queue & reset command buffer
-    VULKAN_CONTEXT.InteropDevice->LockSubmissionQueue();
-
-    VkResult vr = p_vkResetCommandBuffer(EffectCommandBuffer, 0);
-    if (vr != VK_SUCCESS) {
-        Logger::Log("FVulkanNormals::SubmitRendering: vkResetCommandBuffer failed rv=%d", vr);
-        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
-        return;
-    }
-
-    VkCommandBufferBeginInfo beginInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vr = p_vkBeginCommandBuffer(EffectCommandBuffer, &beginInfo);
-    if (vr != VK_SUCCESS) {
-        Logger::Log("FVulkanNormals::SubmitRendering: vkBeginCommandBuffer failed rv=%d", vr);
-        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
-        return;
-    }
-
-    // Bind pipeline + descriptor sets
-    p_vkCmdBindPipeline(EffectCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, EffectPipeline);
-
-    VkDescriptorSet sets[2];
-    sets[0] = TheVulkanEffectsManager->GlobalResources.GetGlobalDescriptorSets().GlobalFrameDescriptorSet; // set 0
-    sets[1] = EffectDescriptorSet;                                                                           // set 1
-
-    p_vkCmdBindDescriptorSets(
-        EffectCommandBuffer,
-        VK_PIPELINE_BIND_POINT_COMPUTE,
-        EffectPipelineLayout,
-        0,
-        2,
-        sets,
-        0,
-        nullptr);
-
-    const uint32_t Wgx = 16, Wgy = 16;
-    uint32_t groupsX = (VulkanDepthSurface->Width  + Wgx - 1) / Wgx;
-    uint32_t groupsY = (VulkanDepthSurface->Height + Wgy - 1) / Wgy;
-
-    // -------- PASS LOOP: 0 = reconstruct, 1 = blur H, 2 = blur V --------
-    for (uint32_t pass = 0; pass < 3; ++pass) {
-        UpdateDescriptorsForPass(pass);
-
-        p_vkCmdBindDescriptorSets(
-            EffectCommandBuffer,
-            VK_PIPELINE_BIND_POINT_COMPUTE,
-            EffectPipelineLayout,
-            0,
-            2,
-            sets,
-            0,
-            nullptr);
-        
-        FPushConstants pc{};
-        pc.Pass = pass;
-
-        p_vkCmdPushConstants(
-            EffectCommandBuffer,
-            EffectPipelineLayout,
-            VK_SHADER_STAGE_COMPUTE_BIT,
-            0,
-            sizeof(FPushConstants),
-            &pc);
-
-        p_vkCmdDispatch(EffectCommandBuffer, groupsX, groupsY, 1);
-
-        // Barriers between passes where the previous pass's output becomes the next pass's input
-        if (pass == 0) {
-            // Pass 0 wrote OutputSurface -> will be sampled as input in pass 1
-            VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-            barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barrier.oldLayout     = VK_IMAGE_LAYOUT_GENERAL;
-            barrier.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image         = OutputSurface.Image;
-            barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.baseMipLevel   = 0;
-            barrier.subresourceRange.levelCount     = 1;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount     = 1;
-
-            p_vkCmdPipelineBarrier(
-                EffectCommandBuffer,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                0,
-                0, nullptr,
-                0, nullptr,
-                1, &barrier);
-        }
-        else if (pass == 1) {
-            // Pass 1 wrote TemporarySurface -> will be sampled as input in pass 2
-            VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-            barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            barrier.oldLayout     = VK_IMAGE_LAYOUT_GENERAL;
-            barrier.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image         = TemporarySurface.Image;
-            barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.baseMipLevel   = 0;
-            barrier.subresourceRange.levelCount     = 1;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount     = 1;
-
-            p_vkCmdPipelineBarrier(
-                EffectCommandBuffer,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                0,
-                0, nullptr,
-                0, nullptr,
-                1, &barrier);
-        }
-    }
-    vr = p_vkEndCommandBuffer(EffectCommandBuffer);
-    if (vr != VK_SUCCESS) {
-        Logger::Log("FVulkanNormals::SubmitRendering: vkEndCommandBuffer failed rv=%d", vr);
-        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
-        return;
-    }
-
-    TRY_APPLY_FENCE(this);
-
-    VkSubmitInfo submit{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers    = &EffectCommandBuffer;
-
-    vr = p_vkQueueSubmit(VULKAN_CONTEXT.Queue, 1, &submit, EffectFence);
-    if (vr != VK_SUCCESS) {
-        Logger::Log("FVulkanNormals::SubmitRendering: vkQueueSubmit failed rv=%d", vr);
-    }
-
-    VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
-    TRY_DEBUG_END_FENCE(this);
 }
 
 void FVulkanNormals::CompleteRendering(IDirect3DSurface9* SceneColor)
@@ -431,4 +450,25 @@ void FVulkanNormals::CompleteRendering(IDirect3DSurface9* SceneColor)
         TheVulkanEffectsManager->NormalsSurface = OutputSurface;
         TheVulkanEffectsManager->GlobalResources.UpdatePerFrame();
     }
+    TheRenderManager->device->StretchRect(OutputSurface.D3DSurface, nullptr, SceneColor, nullptr, D3DTEXF_NONE);
+    Logger::Log("VulkanNormals GPU Time : %f", GpuTimeMs);
+}
+
+void FVulkanNormals::UpdateSettingsFromNvr()
+{
+    if (!TheSettingManager)
+        return;
+
+    const char* shaderId = GetName();   // e.g. "VulkanNormals"
+
+    char section[128];
+
+    // Main group
+    std::snprintf(section, sizeof(section), "Shaders.%s.Main", shaderId);
+    Settings.DummyStrength = TheSettingManager->GetSettingF(section, "DummyStrength");
+    Settings.DummySamples  = TheSettingManager->GetSettingI(section, "DummySamples");
+
+    // Debug group
+    std::snprintf(section, sizeof(section), "Shaders.%s.Debug", shaderId);
+    Settings.bDebugView = (TheSettingManager->GetSettingI(section, "DebugView") != 0);
 }

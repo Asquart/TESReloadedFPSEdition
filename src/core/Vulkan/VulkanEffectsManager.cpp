@@ -1,7 +1,8 @@
 #include "VulkanEffectsManager.h"
 
-//Effects
-#include "VulkanEffects/VulkanAO.h"
+#include <unordered_set>
+
+#include "VulkanSettingsIntegration.h"
 
 namespace VulkanEffectsManagerLocal
 {
@@ -167,28 +168,103 @@ void FVulkanEffectsManager::RenderPreTonemapping(IDirect3DSurface9* InSceneColor
     GlobalResources.UpdatePerFrame();
     for (auto& EffectPair : EffectsPreTonemap)
     {
-        //Logger::Log("Submitting effect %s", EffectPair.first.c_str());
-        EffectPair.second->SubmitRendering();
-    }
-    for (auto& EffectPair : EffectsPreTonemap)
-    {
-        //Logger::Log("Completing effect %s", EffectPair.first.c_str());
-        EffectPair.second->CompleteRendering(InSceneColor);
+        IVulkanEffect* Effect = EffectPair.second.get();
+        if (!Effect || !Effect->IsEnabled())
+        {
+            continue;
+        }
+            
+        Effect->SubmitRendering();
     }
 
-     // if (const FVulkanInteropSurface* DepthSurface = TheVulkanEffectsManager->GetNormalsSurface())
-     // {
-    //     LogSurfacePixelA16B16G16R16F(TheRenderManager->device, TheShaderManager->Effects.Normals->Textures.NormalsSurface, 1258, 1427, "NVR Normal pixel value");
-    //     LogSurfacePixelA16B16G16R16F(TheRenderManager->device, DepthSurface->D3DSurface, 1258, 1427, "Vulkan Normal pixel value");
-         //TheRenderManager->device->StretchRect(DepthSurface->D3DSurface, NULL, InSceneColor, NULL, D3DTEXF_NONE);
-     //}
+    for (auto& EffectPair : EffectsPreTonemap)
+    {
+        IVulkanEffect* Effect = EffectPair.second.get();
+        if (!Effect || !Effect->IsEnabled())
+            continue;
+        Effect->CompleteRendering(InSceneColor);
+    }
 }
 
 void FVulkanEffectsManager::RenderPostTonemapping(IDirect3DSurface9* InSceneColor)
 {
     DXVK_CheckReturn()
+
     for (auto& EffectPair : EffectsPostTonemap)
-        EffectPair.second->CompleteRendering(InSceneColor);
+    {
+        IVulkanEffect* Effect = EffectPair.second.get();
+        if (!Effect || !Effect->IsEnabled())
+            continue;
+        Effect->SubmitRendering();
+    }
+    
+    for (auto& EffectPair : EffectsPostTonemap)
+    {
+        IVulkanEffect* Effect = EffectPair.second.get();
+        if (!Effect || !Effect->IsEnabled())
+            continue;
+
+        Effect->CompleteRendering(InSceneColor);
+    }
+}
+
+IVulkanEffect* FVulkanEffectsManager::FindEffectById(const char* Id)
+{
+    if (!Id)
+        return nullptr;
+
+    auto matches = [Id](const auto& pair) -> bool
+    {
+        // By convention we use GetId() for menu + config (e.g. "VulkanNormals")
+        if (!pair.second)
+            return false;
+
+        const char* effId = pair.second->GetName();
+        return effId && std::strcmp(effId, Id) == 0;
+    };
+
+    for (auto& kv : EffectsPreTonemap)
+    {
+        if (matches(kv))
+            return kv.second.get();
+    }
+
+    for (auto& kv : EffectsPostTonemap)
+    {
+        if (matches(kv))
+            return kv.second.get();
+    }
+
+    return nullptr;
+}
+
+float FVulkanEffectsManager::GetEffectGpuTimeMs(const char* Id) const
+{
+    if (!Id)
+        return 0.0f;
+
+    auto matches = [Id](const auto& pair) -> bool
+    {
+        if (!pair.second)
+            return false;
+
+        const char* effId = pair.second->GetName();
+        return effId && std::strcmp(effId, Id) == 0;
+    };
+
+    for (const auto& kv : EffectsPreTonemap)
+    {
+        if (matches(kv))
+            return kv.second->GetGpuTimeMs();
+    }
+
+    for (const auto& kv : EffectsPostTonemap)
+    {
+        if (matches(kv))
+            return kv.second->GetGpuTimeMs();
+    }
+
+    return 0.0f;
 }
 
 FVulkanInteropSurface* FVulkanEffectsManager::GetDepthSurface()
@@ -365,15 +441,42 @@ void FVulkanEffectsManager::InitializeBlueNoiseSurface()
 
 void FVulkanEffectsManager::RegisterEffects()
 {
+    // Track which logical effects we've already registered in the settings system.
+    // This lets you have two instances (e.g. pre/post tonemap) sharing one config.
+    std::unordered_set<std::string> RegisteredEffectIds;
+
     for (const auto& Info : FVulkanEffectFactory::GetRegistry())
     {
+        // 1) Create and initialize the effect instance
         auto Effect = Info.Create();
+        IVulkanEffect* RawEffect = Effect.get();  // save raw pointer BEFORE move
+
         Effect->Initialize();
 
+        // 2) Decide how we want to identify this effect in config/menu
+        //    Prefer the effect's own ID, fall back to factory Name if nullptr/empty.
+        const char* EffectName = RawEffect->GetName();
+        std::string EffectId = (EffectName && EffectName[0] != '\0')
+            ? std::string(EffectName)
+            : Info.Name;
+
+        // 3) Store instance into the appropriate phase map
         if (Info.Phase == EVulkanEffectPhase::PreTonemap)
+        {
             EffectsPreTonemap[Info.Name] = std::move(Effect);
+        }
         else
+        {
             EffectsPostTonemap[Info.Name] = std::move(Effect);
+        }
+
+        // 4) Register settings in NVR only once per logical effect ID
+        if (RegisteredEffectIds.insert(EffectId).second)
+        {
+            // RawEffect is still valid here: the object was not destroyed,
+            // only the owning unique_ptr changed (moved into one of the maps).
+            RegisterVulkanEffectSettingsInToml(*RawEffect);
+        }
     }
 }
 

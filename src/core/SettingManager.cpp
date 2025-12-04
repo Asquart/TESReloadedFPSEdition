@@ -1206,6 +1206,7 @@ void SettingManager::SetMenuShaderEnabled(const char* Name, bool enabled) {
 	strcpy(settingString, "Shaders.");
 	strcat(settingString, Name);
 	strcat(settingString, ".Status");
+	Logger::Log("TryingToSetShaderEnabled %s", settingString);
 	SetSetting(settingString, "Enabled", enabled);
 }
 

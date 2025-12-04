@@ -58,7 +58,6 @@ extern PFN_vkGetPhysicalDeviceProperties p_vkGetPhysicalDeviceProperties;
 extern PFN_vkDestroyPipeline p_vkDestroyPipeline;
 extern PFN_vkDestroyPipelineLayout p_vkDestroyPipelineLayout;
 extern PFN_vkDestroyDescriptorSetLayout p_vkDestroyDescriptorSetLayout;
-extern PFN_vkDestroyShaderModule p_vkDestroyShaderModule;
 extern PFN_vkDestroyDescriptorPool p_vkDestroyDescriptorPool;
 extern PFN_vkDestroyQueryPool p_vkDestroyQueryPool;
 extern PFN_vkResetCommandBuffer p_vkResetCommandBuffer;
@@ -67,6 +66,9 @@ extern PFN_vkQueueWaitIdle p_vkQueueWaitIdle;
 
 extern PFN_vkGetPhysicalDeviceMemoryProperties p_vkGetPhysicalDeviceMemoryProperties;
 extern PFN_vkCmdPipelineBarrier p_vkCmdPipelineBarrier;
+
+extern PFN_vkCmdBeginRenderPass p_vkCmdBeginRenderPass;
+extern PFN_vkCmdEndRenderPass p_vkCmdEndRenderPass;
 
 class VulkanFunctionsHooks
 {

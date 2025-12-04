@@ -142,6 +142,7 @@
     <ClCompile Include="..\src\core\Vulkan\VulkanFunctionsHooks.cpp" />
     <ClCompile Include="..\src\core\Vulkan\VulkanGlobalResources.cpp" />
     <ClCompile Include="..\src\core\Vulkan\VulkanInteropManager.cpp" />
+    <ClCompile Include="..\src\core\Vulkan\VulkanSettingsIntegration.cpp" />
     <ClCompile Include="..\src\effects\AmbientOcclusion.cpp" />
     <ClCompile Include="..\src\effects\Animator.cpp" />
     <ClCompile Include="..\src\effects\AvgLuma.cpp" />
@@ -228,6 +229,7 @@
     <ClInclude Include="..\src\core\Vulkan\VulkanFunctionsHooks.h" />
     <ClInclude Include="..\src\core\Vulkan\VulkanGlobalResources.h" />
     <ClInclude Include="..\src\core\Vulkan\VulkanInteropManager.h" />
+    <ClInclude Include="..\src\core\Vulkan\VulkanSettingsIntegration.h" />
     <ClInclude Include="..\src\effects\AmbientOcclusion.h" />
     <ClInclude Include="..\src\effects\Animator.h" />
     <ClInclude Include="..\src\effects\AvgLuma.h" />

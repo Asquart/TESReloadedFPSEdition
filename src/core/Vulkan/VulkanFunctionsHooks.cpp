@@ -51,6 +51,8 @@ PFN_vkBindBufferMemory p_vkBindBufferMemory = nullptr;
 PFN_vkGetPhysicalDeviceMemoryProperties p_vkGetPhysicalDeviceMemoryProperties = nullptr;
 PFN_vkCmdPipelineBarrier p_vkCmdPipelineBarrier = nullptr;
 PFN_vkQueueWaitIdle p_vkQueueWaitIdle = nullptr;
+PFN_vkCmdBeginRenderPass p_vkCmdBeginRenderPass = nullptr;
+PFN_vkCmdEndRenderPass p_vkCmdEndRenderPass = nullptr;
 
 void VulkanFunctionsHooks::InitVulkanFunctionPointers(VkInstance instance, VkDevice device) {
     HMODULE mod = LoadLibraryA("vulkan-1.dll");
@@ -116,6 +118,9 @@ void VulkanFunctionsHooks::InitVulkanFunctionPointers(VkInstance instance, VkDev
     LoadDev(p_vkUnmapMemory, "vkUnmapMemory");
     LoadDev(p_vkGetPhysicalDeviceMemoryProperties, "vkGetPhysicalDeviceMemoryProperties");
     LoadDev(p_vkCmdPipelineBarrier, "vkCmdPipelineBarrier");
+    LoadDev(p_vkCmdBeginRenderPass, "vkCmdBeginRenderPass");
+    LoadDev(p_vkCmdEndRenderPass, "vkCmdEndRenderPass");
+    LoadDev(p_vkGetPhysicalDeviceProperties, "vkGetPhysicalDeviceProperties");
 
     Logger::Log("Vulkan function pointers initialized");
 }

@@ -22,6 +22,8 @@ public:
     void RenderPreTonemapping(IDirect3DSurface9* SceneColor);
     void RenderPostTonemapping(IDirect3DSurface9* SceneColor);
 
+    IVulkanEffect* FindEffectById(const char* Id);
+    float GetEffectGpuTimeMs(const char* Id) const;
 
     FVulkanInteropSurface* GetDepthSurface();
     FVulkanInteropSurface* GetNormalsSurface();

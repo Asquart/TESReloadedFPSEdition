@@ -1,10 +1,5 @@
 #include "VulkanEffect.h"
 
-IVulkanEffect::~IVulkanEffect()
-{
-    DestroyResources();
-}
-
 void IVulkanEffect::Initialize()
 {
     CreateResources();
@@ -12,18 +7,63 @@ void IVulkanEffect::Initialize()
 
 void IVulkanEffect::OnGameBuffersUpdated()
 {
-    CreateDescriptorSets();
+    DestroyResources();
+    CreateResources();
+}
+
+bool IVulkanEffect::IsEnabled() const
+{
+    // Prefer NVR settings if available, fall back to local flag
+    if (TheSettingManager)
+    {
+        // NVR already has helpers for "Shaders.<Name>.Status.Enabled"
+        return TheSettingManager->GetMenuShaderEnabled(GetName());
+    }
+    return bEnabled;
+}
+
+void IVulkanEffect::SetEnabled(const bool InEnabled)
+{
+    bEnabled = InEnabled;
+
+    // Push the change back into NVR so UI + config stay in sync
+    if (TheSettingManager) {
+        TheSettingManager->SetMenuShaderEnabled(GetName(), InEnabled);
+    }
+}
+
+float IVulkanEffect::GetGpuTimeMs() const
+{
+    return GpuTimeMs;
+}
+
+void IVulkanEffect::SetGpuTimeMs(const float InMs)
+{
+    GpuTimeMs = InMs;
 }
 
 void IVulkanEffect::CreateResources()
 {
+    // Auto-build SPIR-V path from GetSpirvFileName if not set explicitly
+    if (SpirvPath.empty())
+    {
+        const std::string& fileName = GetSpirvFileName();
+        if (fileName[0] != '\0')
+        {
+            // Adjust base path to whatever you're actually using
+            SpirvPath = std::string("Data\\Shaders\\NewVegasReloaded\\Vulkan\\") + fileName;
+        }
+    }
+
     LoadShaderModule();
     CreateInteropTextures();
     CreatePipeline();
     CreateDescriptorSets();
     CreateCommandBuffer();
     CreateFence();
+    CreateTimestampQueryPool();
 }
+
 
 void IVulkanEffect::DestroyResources()
 {
@@ -62,6 +102,11 @@ void IVulkanEffect::DestroyResources()
     if (EffectFence != VK_NULL_HANDLE)
     {
         p_vkDestroyFence(Vulkan.Device, EffectFence, nullptr);
+    }
+
+    if (EffectQueryPool != VK_NULL_HANDLE) {
+        p_vkDestroyQueryPool(Vulkan.Device, EffectQueryPool, nullptr);
+        EffectQueryPool = VK_NULL_HANDLE;
     }
 }
 
@@ -128,3 +173,203 @@ void IVulkanEffect::LoadShaderModule()
     VK_CHECK(p_vkCreateShaderModule(VULKAN_CONTEXT.Device, &Info, nullptr, &EffectShaderModule),
         "vkCreateShaderModule");
 }
+
+void IVulkanEffect::CreateTimestampQueryPool()
+{
+    if (EffectQueryPool == VK_NULL_HANDLE && VULKAN_CONTEXT.TimestampPeriod > 0.0)
+    {
+        VkQueryPoolCreateInfo qp{};
+        qp.sType      = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        qp.queryType  = VK_QUERY_TYPE_TIMESTAMP;
+        qp.queryCount = 2; // start + end
+
+        VkResult vr = p_vkCreateQueryPool(VULKAN_CONTEXT.Device, &qp, nullptr, &EffectQueryPool);
+        if (vr != VK_SUCCESS)
+        {
+            Logger::Log("IVulkanEffect::CreateResources: vkCreateQueryPool failed rv=%d", vr);
+            EffectQueryPool = VK_NULL_HANDLE;
+        }
+        else
+        {
+            StartQueryIndex = 0;
+            EndQueryIndex   = 1;
+        }
+    }
+}
+
+void FComputeEffectBase::SubmitRendering()
+{
+    DXVK_CheckReturn();
+
+    UpdateSettingsFromNvr();
+
+    if (!IsEnabled())
+        return;
+
+    if (!PrepareResourcesForSubmit())
+        return;
+
+    VkExtent2D extent = GetDispatchExtent();
+    if (extent.width == 0 || extent.height == 0)
+        return;
+
+    VkExtent2D wg = GetWorkgroupSize();
+    const uint32_t groupsX = (extent.width  + wg.width  - 1) / wg.width;
+    const uint32_t groupsY = (extent.height + wg.height - 1) / wg.height;
+
+    VULKAN_CONTEXT.InteropDevice->LockSubmissionQueue();
+
+    VkResult vr = p_vkResetCommandBuffer(EffectCommandBuffer, 0);
+    if (vr != VK_SUCCESS) {
+        Logger::Log("FComputeEffectBase::SubmitRendering: vkResetCommandBuffer failed rv=%d", vr);
+        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
+        OnSubmitFailed(vr);
+        return;
+    }
+
+    VkCommandBufferBeginInfo beginInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vr = p_vkBeginCommandBuffer(EffectCommandBuffer, &beginInfo);
+    if (vr != VK_SUCCESS) {
+        Logger::Log("FComputeEffectBase::SubmitRendering: vkBeginCommandBuffer failed rv=%d", vr);
+        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
+        OnSubmitFailed(vr);
+        return;
+    }
+
+    // Reset timestamp queries if available
+    if (DEBUG && EffectQueryPool != VK_NULL_HANDLE)
+    {
+        p_vkCmdResetQueryPool(EffectCommandBuffer, EffectQueryPool, 0, 2);
+
+        p_vkCmdWriteTimestamp(
+            EffectCommandBuffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            EffectQueryPool,
+            StartQueryIndex);
+    }
+
+    // Bind pipeline once; derived classes can rebind if needed.
+    p_vkCmdBindPipeline(EffectCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, EffectPipeline);
+
+    const uint32_t passCount = GetPassCount();
+    for (uint32_t pass = 0; pass < passCount; ++pass)
+    {
+        RecordPassCommands(EffectCommandBuffer, pass, groupsX, groupsY);
+        OnAfterPass(EffectCommandBuffer, pass);
+    }
+
+    if (DEBUG && EffectQueryPool != VK_NULL_HANDLE)
+    {
+        p_vkCmdWriteTimestamp(
+            EffectCommandBuffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            EffectQueryPool,
+            EndQueryIndex);
+    }
+
+    vr = p_vkEndCommandBuffer(EffectCommandBuffer);
+    if (vr != VK_SUCCESS) {
+        Logger::Log("FComputeEffectBase::SubmitRendering: vkEndCommandBuffer failed rv=%d", vr);
+        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
+        OnSubmitFailed(vr);
+        return;
+    }
+
+    TRY_APPLY_FENCE(this);
+
+    VkSubmitInfo submit{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers    = &EffectCommandBuffer;
+
+    vr = p_vkQueueSubmit(VULKAN_CONTEXT.Queue, 1, &submit, EffectFence);
+    if (vr != VK_SUCCESS) {
+        Logger::Log("FComputeEffectBase::SubmitRendering: vkQueueSubmit failed rv=%d", vr);
+        OnSubmitFailed(vr);
+    }
+
+    VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
+    TRY_DEBUG_END_FENCE(this);
+}
+
+
+void FGraphicsEffectBase::SubmitRendering()
+{
+    DXVK_CheckReturn();
+
+    if (!IsEnabled())
+        return;
+
+    VkExtent2D extent = GetRenderExtent();
+    if (extent.width == 0 || extent.height == 0)
+        return;
+
+    VkRenderPass  renderPass  = GetRenderPass();
+    VkFramebuffer framebuffer = GetFramebuffer();
+
+    if (renderPass == VK_NULL_HANDLE || framebuffer == VK_NULL_HANDLE)
+        return;
+
+    VULKAN_CONTEXT.InteropDevice->LockSubmissionQueue();
+
+    VkResult vr = p_vkResetCommandBuffer(EffectCommandBuffer, 0);
+    if (vr != VK_SUCCESS) {
+        Logger::Log("FGraphicsEffectBase::SubmitRendering: vkResetCommandBuffer failed rv=%d", vr);
+        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
+        OnSubmitFailed(vr);
+        return;
+    }
+
+    VkCommandBufferBeginInfo beginInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vr = p_vkBeginCommandBuffer(EffectCommandBuffer, &beginInfo);
+    if (vr != VK_SUCCESS) {
+        Logger::Log("FGraphicsEffectBase::SubmitRendering: vkBeginCommandBuffer failed rv=%d", vr);
+        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
+        OnSubmitFailed(vr);
+        return;
+    }
+    // (optional) configure clear values here if needed
+
+    VkRenderPassBeginInfo rpBegin{ VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+    rpBegin.renderPass  = renderPass;
+    rpBegin.framebuffer = framebuffer;
+    rpBegin.renderArea.offset = { 0, 0 };
+    rpBegin.renderArea.extent = extent;
+    rpBegin.clearValueCount = GetClearValueCount();
+    rpBegin.pClearValues    = GetClearValues();
+
+    p_vkCmdBeginRenderPass(EffectCommandBuffer, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
+    OnBeginRenderPass(EffectCommandBuffer);
+
+    RecordDrawCommands(EffectCommandBuffer);
+
+    OnEndRenderPass(EffectCommandBuffer);
+    p_vkCmdEndRenderPass(EffectCommandBuffer);
+
+    vr = p_vkEndCommandBuffer(EffectCommandBuffer);
+    if (vr != VK_SUCCESS) {
+        Logger::Log("FGraphicsEffectBase::SubmitRendering: vkEndCommandBuffer failed rv=%d", vr);
+        VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
+        OnSubmitFailed(vr);
+        return;
+    }
+
+    TRY_APPLY_FENCE(this);
+
+    VkSubmitInfo submit{ VK_STRUCTURE_TYPE_SUBMIT_INFO };
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers    = &EffectCommandBuffer;
+
+    vr = p_vkQueueSubmit(VULKAN_CONTEXT.Queue, 1, &submit, EffectFence);
+    if (vr != VK_SUCCESS) {
+        Logger::Log("FGraphicsEffectBase::SubmitRendering: vkQueueSubmit failed rv=%d", vr);
+        OnSubmitFailed(vr);
+    }
+
+    VULKAN_CONTEXT.InteropDevice->ReleaseSubmissionQueue();
+    TRY_DEBUG_END_FENCE(this);
+}
+

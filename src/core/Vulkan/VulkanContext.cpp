@@ -22,6 +22,10 @@ void FVulkanContext::Initialize()
     InitSamplers();
     InitPools();
 
+    VkPhysicalDeviceProperties props{};
+    p_vkGetPhysicalDeviceProperties(PhysicalDevice, &props);
+    TimestampPeriod = props.limits.timestampPeriod;
+
     bInitialized = true;
 }
 
