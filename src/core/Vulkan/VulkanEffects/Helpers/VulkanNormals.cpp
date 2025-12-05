@@ -17,8 +17,8 @@ void FVulkanNormals::FillPushConstants(FVulkanNormalsPushConstants& out,
     // Only Pass for now; settings are not wired to shader yet.
     out.Pass = passIndex;
 
-    // Later can do e.g.:
-    // out.SomeParam = src.DummyStrength;
+    out.SmoothNumDirs = Settings.SmoothNumDirs;
+    out.SmoothNumSteps = Settings.SmoothNumSteps;
 }
 
 void FVulkanNormals::DestroyResources()
@@ -106,31 +106,6 @@ void FVulkanNormals::OnAfterPass(VkCommandBuffer cmd, uint32_t passIndex)
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.image         = OutputSurface.Image;
-        barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier.subresourceRange.baseMipLevel   = 0;
-        barrier.subresourceRange.levelCount     = 1;
-        barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount     = 1;
-
-        p_vkCmdPipelineBarrier(
-            cmd,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0,
-            0, nullptr,
-            0, nullptr,
-            1, &barrier);
-    }
-    else if (passIndex == 1) {
-        // Pass 1 wrote TemporarySurface, used as input in pass 2
-        VkImageMemoryBarrier barrier{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
-        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        barrier.oldLayout     = VK_IMAGE_LAYOUT_GENERAL;
-        barrier.newLayout     = VK_IMAGE_LAYOUT_GENERAL;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image         = TemporarySurface.Image;
         barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         barrier.subresourceRange.baseMipLevel   = 0;
         barrier.subresourceRange.levelCount     = 1;
@@ -258,12 +233,12 @@ void FVulkanNormals::UpdateDescriptorsForPass(uint32_t InPass)
 
     switch (InPass) {
     case 0: // reconstruct: write to OutputSurface
-        dst = &OutputSurface;
+        dst = &TemporarySurface;
         src = &OutputSurface; // bound but unused
         break;
     case 1: // horizontal blur: OutputSurface -> TemporarySurface
-        dst = &TemporarySurface;
-        src = &OutputSurface;
+        dst = &OutputSurface;
+        src = &TemporarySurface;
         break;
     case 2: // vertical blur: TemporarySurface -> OutputSurface (final)
     default:
@@ -391,41 +366,39 @@ void FVulkanNormals::BuildSettingsDescriptors()
 {
     SettingDescs.clear();
 
-    // DummyStrength slider
     {
         VulkanSettingDescriptor d{};
-        d.id       = "DummyStrength";
-        d.label    = "Dummy Strength";
-        d.group    = "Main";
-        d.type     = VulkanSettingType::Float;
-        d.minValue = 0.0f;
-        d.maxValue = 2.0f;
-        d.step     = 0.05f;
-
-        d.getFloat = [this]() { return Settings.DummyStrength; };
-        d.setFloat = [this](float v) { Settings.DummyStrength = v; };
-
-        SettingDescs.push_back(std::move(d));
-    }
-
-    // DummySamples slider
-    {
-        VulkanSettingDescriptor d{};
-        d.id       = "DummySamples";
-        d.label    = "Dummy Samples";
+        d.id       = "SmoothNumDirs";
+        d.label    = "Smooth Num Dirs";
         d.group    = "Main";
         d.type     = VulkanSettingType::Int;
         d.minValue = 1;
         d.maxValue = 64;
         d.step     = 1.0f;
 
-        d.getInt = [this]() { return Settings.DummySamples; };
-        d.setInt = [this](int v) { Settings.DummySamples = v; };
+        d.getInt = [this]() { return Settings.SmoothNumDirs; };
+        d.setInt = [this](int v) { Settings.SmoothNumDirs = v; };
+
+        SettingDescs.push_back(std::move(d));
+        UINT SmoothNumSteps  = 4;
+    }
+
+    {
+        VulkanSettingDescriptor d{};
+        d.id       = "SmoothNumSteps";
+        d.label    = "Smooth Num Steps";
+        d.group    = "Main";
+        d.type     = VulkanSettingType::Int;
+        d.minValue = 1;
+        d.maxValue = 64;
+        d.step     = 1.0f;
+
+        d.getInt = [this]() { return Settings.SmoothNumSteps; };
+        d.setInt = [this](int v) { Settings.SmoothNumSteps = v; };
 
         SettingDescs.push_back(std::move(d));
     }
 
-    // Debug checkbox
     {
         VulkanSettingDescriptor d{};
         d.id       = "DebugView";
@@ -450,8 +423,10 @@ void FVulkanNormals::CompleteRendering(IDirect3DSurface9* SceneColor)
         TheVulkanEffectsManager->NormalsSurface = OutputSurface;
         TheVulkanEffectsManager->GlobalResources.UpdatePerFrame();
     }
-    TheRenderManager->device->StretchRect(OutputSurface.D3DSurface, nullptr, SceneColor, nullptr, D3DTEXF_NONE);
-    Logger::Log("VulkanNormals GPU Time : %f", GpuTimeMs);
+    if (Settings.bDebugView)
+    {
+        TheRenderManager->device->StretchRect(OutputSurface.D3DSurface, nullptr, SceneColor, nullptr, D3DTEXF_NONE);
+    }
 }
 
 void FVulkanNormals::UpdateSettingsFromNvr()
@@ -465,9 +440,9 @@ void FVulkanNormals::UpdateSettingsFromNvr()
 
     // Main group
     std::snprintf(section, sizeof(section), "Shaders.%s.Main", shaderId);
-    Settings.DummyStrength = TheSettingManager->GetSettingF(section, "DummyStrength");
-    Settings.DummySamples  = TheSettingManager->GetSettingI(section, "DummySamples");
-
+    Settings.SmoothNumSteps  = TheSettingManager->GetSettingI(section, "SmoothNumSteps");
+    Settings.SmoothNumDirs  = TheSettingManager->GetSettingI(section, "SmoothNumDirs");
+    
     // Debug group
     std::snprintf(section, sizeof(section), "Shaders.%s.Debug", shaderId);
     Settings.bDebugView = (TheSettingManager->GetSettingI(section, "DebugView") != 0);

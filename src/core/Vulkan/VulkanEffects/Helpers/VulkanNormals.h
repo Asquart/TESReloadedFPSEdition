@@ -6,13 +6,15 @@
 struct FVulkanNormalsPushConstants
 {
     UINT Pass = 0;
+    UINT SmoothNumDirs   = 16;
+    UINT SmoothNumSteps  = 2;
 };
 
 // Dummy settings (visible in menu, not yet used by shader)
 struct FVulkanNormalsSettings
 {
-    float DummyStrength = 1.0f;
-    int   DummySamples  = 8;
+    UINT SmoothNumDirs   = 16;
+    UINT SmoothNumSteps  = 2;
     bool  bDebugView    = false;
 };
 
@@ -43,8 +45,8 @@ protected:
     void CompleteRendering(IDirect3DSurface9* SceneColor) override;
     void UpdateSettingsFromNvr() override;
 
-    // FComputeEffectBase overrides
-    uint32_t   GetPassCount() const override { return 3; } // example: 3 passes
+    // FComputeEffectBase overrides/
+    uint32_t   GetPassCount() const override { return 2; } // example: 3 passes
     VkExtent2D GetDispatchExtent() const override;
     bool       PrepareResourcesForSubmit() override;
     void       RecordPassCommands(VkCommandBuffer cmd,

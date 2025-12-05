@@ -6,151 +6,232 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-// Output of the current pass
+// Output for each pass
 layout(set = 1, binding = 0, rgba16f) uniform writeonly image2D uNormalsOut;
 
-// Input normals texture (used in blur passes; bound but unused in pass 0)
+// Input for pass 1 (pass 0 writes, pass 1 reads)
 layout(set = 1, binding = 1) uniform sampler2D uNormalsIn;
 
-// Push constants: which pass we are running
+// -----------------------------------------------------------------------------
+// Push constants
+// -----------------------------------------------------------------------------
 layout(push_constant) uniform PushConstants {
-    uint Pass;      // 0 = reconstruct, 1 = blur horizontal, 2 = blur vertical
+    uint  Pass;               // 0 = reconstruct, 1 = smooth
+    uint  SmoothNumDirs;      // 4 recommended
+    uint  SmoothNumSteps;     // 2 recommended
 } pc;
 
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
 
-// ------------------------------------------------------------------
-// HLSL constants, translated
-// ------------------------------------------------------------------
-const float dropTreshold = 0.82;
-const float blurRadius   = 0.6;
-const int   KernelSize   = 24;
-
-const float BlurNormalsWeights[KernelSize] = float[KernelSize](
-    0.019956226, 0.021463016, 0.032969806, 0.044476596,
-    0.055983386, 0.067490176, 0.078996966, 0.080503756,
-    0.092010546, 0.105024126, 0.116530916, 0.128037706,
-    0.128037706, 0.116530916, 0.105024126, 0.092010546,
-    0.080503756, 0.078996966, 0.067490176, 0.055983386,
-    0.044476596, 0.032969806, 0.021463016, 0.019956226
-);
-
-// OffsetMask equivalents
-const vec2 OffsetMaskH = vec2(1.0, 0.0);
-const vec2 OffsetMaskV = vec2(0.0, 1.0);
-
-
-// ------------------------------------------------------------------
-// PASS 0: ComputeNormals (from Depth.hlsl)
-// ------------------------------------------------------------------
-vec4 ComputeNormalsAtPixel(ivec2 pix)
+vec3 safeNorm(vec3 v)
 {
-    vec2 texel = uFrame.TESR_ReciprocalResolution.xy;
-    vec2 uv = (vec2(pix) + 0.5) * texel;
-
-    vec4 rightUv  = uv.xyxy + vec4( 1.0, 0.0,  2.0, 0.0) * texel.xyxy;
-    vec4 leftUv   = uv.xyxy + vec4(-1.0, 0.0, -2.0, 0.0) * texel.xyxy;
-    vec4 bottomUv = uv.xyxy + vec4( 0.0, 1.0,  0.0, 2.0) * texel.xyxy;
-    vec4 topUv    = uv.xyxy + vec4( 0.0,-1.0,  0.0,-2.0) * texel.xyxy;
-
-    float depth = readDepth(uv); // uses .x * farZ
-
-    vec4 H = vec4(
-        readDepth(rightUv.xy),
-        readDepth(leftUv.xy),
-        readDepth(rightUv.zw),
-        readDepth(leftUv.zw)
-    );
-
-    vec4 V = vec4(
-        readDepth(topUv.xy),
-        readDepth(bottomUv.xy),
-        readDepth(topUv.zw),
-        readDepth(bottomUv.zw)
-    );
-
-    vec2 he = abs((2.0 * H.xy - H.zw) - depth);
-    vec2 ve = abs((2.0 * V.xy - V.zw) - depth);
-
-    vec3 centerPoint = reconstructPosition(uv);
-    vec3 rightPoint  = reconstructPosition(rightUv.xy);
-    vec3 leftPoint   = reconstructPosition(leftUv.xy);
-    vec3 topPoint    = reconstructPosition(topUv.xy);
-    vec3 bottomPoint = reconstructPosition(bottomUv.xy);
-
-    vec3 left  = centerPoint - leftPoint;
-    vec3 right = rightPoint - centerPoint;
-    vec3 down  = centerPoint - bottomPoint;
-    vec3 up    = topPoint - centerPoint;
-
-    vec3 hDeriv = (he.x > he.y) ? left : right;
-    vec3 vDeriv = (ve.x > ve.y) ? down : up;
-
-    vec3 viewNormal = normalize(cross(vDeriv, hDeriv));
-    return vec4(viewNormal, 1.0);
+    float l2 = dot(v, v);
+    return (l2 > 1e-12) ? v * inversesqrt(l2) : vec3(0.0, 0.0, 1.0);
 }
 
-
-// ------------------------------------------------------------------
-// PASS 1/2: BlurNormals (H or V), from BlurNormals(OffsetMask)
-// ------------------------------------------------------------------
-vec3 BlurNormalsAtPixel(ivec2 pix, vec2 OffsetMask)
+vec2 GetAspectRatio()
 {
+    // TESR_ReciprocalResolution = (1/width, 1/height)
     vec2 recip = uFrame.TESR_ReciprocalResolution.xy;
+    float width  = 1.0 / recip.x;
+    float height = 1.0 / recip.y;
+    return vec2(1.0, width / height);  // x unchanged, y scaled by aspect
+}
 
-    // same convention as ComputeNormalsAtPixel / HLSL
-    vec2 uv = (vec2(pix) + 0.5) * recip;
+// -----------------------------------------------------------------------------
+// PASS 0 — EXACT GEOMETRY-FROM-DEPTH NORMAL RECONSTRUCTION
+// -----------------------------------------------------------------------------
 
-    float WeightSum = 0.12 * saturate(1.0 - dropTreshold);
+vec3 ReconstructNormal(ivec2 pix, ivec2 imgSize, vec2 texel)
+{
+    // Clamp coords
+    ivec2 p0 = ivec2(clamp(pix.x, 0, imgSize.x-1),
+                     clamp(pix.y, 0, imgSize.y-1));
 
-    vec3 normal = expand(texture(uNormalsIn, uv).rgb);
-    vec3 finalNormal = normal * WeightSum;
+    vec2 uv0 = (vec2(p0) + 0.5) * texel;
+    float centerDepth = readDepth(uv0);
+    vec3  centerPos   = reconstructPosition(uv0);
 
-    float depth = readDepth(uv);
-    float depthBasedRadius = abs(log(depth / farZ)) * blurRadius;
-    float depthDrop = (depth / farZ) * 7000.0;
+    const ivec2 OFFS[4] = ivec2[4](
+        ivec2( 1,  0),
+        ivec2(-1,  0),
+        ivec2( 0,  1),
+        ivec2( 0, -1)
+    );
 
-    for (int i = 0; i < KernelSize; ++i) {
-        float k = float(i - 12); // -12..+11
+    vec3 nAccum = vec3(0.0);
+    float wAccum = 0.0;
 
-        vec2 baseOffset = vec2(k) * recip;                // matches BlurNormalsOffsets[i]
-        vec2 uvOff      = uv + (baseOffset * OffsetMask) * depthBasedRadius;
+    for (int t = 0; t < 4; ++t)
+    {
+        int ia, ib;
+        if      (t == 0) { ia = 0; ib = 2; }
+        else if (t == 1) { ia = 2; ib = 1; }
+        else if (t == 2) { ia = 1; ib = 3; }
+        else             { ia = 3; ib = 0; }
 
-        vec3 newNormal   = expand(texture(uNormalsIn, uvOff).rgb);
-        float depth2     = readDepth(uvOff);
-        float useForBlur = (abs(depth - depth2) <= depthDrop) ? 1.0 : 0.0;
+        ivec2 qa = p0 + OFFS[ia];
+        ivec2 qb = p0 + OFFS[ib];
 
-        float weight = BlurNormalsWeights[i] *
-                       saturate(dot(newNormal, normal) - dropTreshold * 0.75) *
-                       useForBlur;
+        qa = ivec2(clamp(qa.x, 0, imgSize.x-1),
+                   clamp(qa.y, 0, imgSize.y-1));
+        qb = ivec2(clamp(qb.x, 0, imgSize.x-1),
+                   clamp(qb.y, 0, imgSize.y-1));
 
-        finalNormal += weight * newNormal;
-        WeightSum   += weight;
+        vec2 uva = (vec2(qa)+0.5)*texel;
+        vec2 uvb = (vec2(qb)+0.5)*texel;
+
+        float da = abs(readDepth(uva) - centerDepth);
+        float db = abs(readDepth(uvb) - centerDepth);
+
+        float zRef = max(centerDepth, 1.0);
+        float relA = da / zRef;
+        float relB = db / zRef;
+
+        // Avoid mixing across edges
+        if (relA > 0.5 || relB > 0.5)
+            continue;
+
+        // Bilateral weights (exact as before)
+        float wa = exp(-relA / 0.15);
+        float wb = exp(-relB / 0.15);
+        float w  = min(wa, wb);
+
+        vec3 pa = reconstructPosition(uva) - centerPos;
+        vec3 pb = reconstructPosition(uvb) - centerPos;
+
+        vec3 n = cross(pb, pa);
+        if (dot(n,n) < 1e-10) continue;
+
+        nAccum += normalize(n) * w;
+        wAccum += w;
     }
 
-    finalNormal /= WeightSum;
-    return finalNormal;
+    return (wAccum > 0.0 ? safeNorm(nAccum / wAccum)
+                         : vec3(0,0,1));
+}
+
+// -----------------------------------------------------------------------------
+// PASS 1 — EXACT MK1 SMOOTHING YOU PROVIDED (CLEANED)
+// -----------------------------------------------------------------------------
+
+vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
+{
+    vec2 uv = (vec2(pix) + 0.5) * texel;
+    vec3 centerN = expand(texture(uNormalsIn, uv).rgb);
+    vec3 centerP = reconstructPosition(uv);
+
+    vec2 aspect = GetAspectRatio();
+
+    float smoothRadius = 0.04;
+    vec2 scaled_radius = (smoothRadius / max(centerP.z, 1e-6)) * aspect;
+
+    uint dirs  = max(1u, pc.SmoothNumDirs);
+    uint steps = max(1u, pc.SmoothNumSteps);
+
+    // Precomputed directions: 0°, 90°, 180°, 270°
+    const vec2 BASE_DIRS[4] = vec2[4](
+        vec2( 1.0,  0.0),
+        vec2( 0.0,  1.0),
+        vec2(-1.0,  0.0),
+        vec2( 0.0, -1.0)
+    );
+
+    // Precomputed radii for steps 1..5: 2,4,8,16,32
+    const float RADIUS_LUT[5] = float[5](
+        2.0, 4.0, 8.0, 16.0, 32.0
+    );
+
+    vec3 accum[4];
+    accum[0] = centerN;
+    accum[1] = centerN;
+    accum[2] = centerN;
+    accum[3] = centerN;
+
+    // Clamp dirs/steps to our LUT sizes
+    uint useDirs  = min(dirs,  4u);
+    uint useSteps = min(steps, 5u);
+
+    for (uint i = 0u; i < useDirs; ++i)
+    {
+        vec2 dir = BASE_DIRS[i];
+
+        // Pre-scale direction once
+        vec2 dirScaled = dir * scaled_radius;
+
+        for (uint s = 1u; s <= useSteps; ++s)
+        {
+            float searchR = RADIUS_LUT[s - 1u]; // 2,4,8,...
+
+            vec2 tap_uv = uv + dirScaled * searchR;
+
+            if (tap_uv.x < 0.0 || tap_uv.x > 1.0 ||
+                tap_uv.y < 0.0 || tap_uv.y > 1.0)
+                continue;
+
+            // Sample normal first
+            vec3 tapN = expand(textureLod(uNormalsIn, tap_uv, 0.0).rgb);
+
+            // Early angle gate: if angle is clearly outside band, skip heavy work
+            float angleMin = 0.2;
+            float angleMax = 0.95;
+            float ndot = dot(centerN, tapN);
+            if (ndot <= angleMin)
+                continue;
+
+            float angle_w = smoothstep(angleMin, angleMax, ndot);
+            if (angle_w <= 0.0)
+                continue;
+
+            // Only for taps that passed angle test, reconstruct position
+            vec3 tapP = reconstructPosition(tap_uv);
+
+            vec3 dp   = tapP - centerP;
+            float dist2 = dot(dp, dp);
+
+            // Distance weight (your original MK1-style term)
+            float dist_w = saturate(1.0 - dist2 * 14.0 / searchR);
+
+            // Only lift distance weight, NEVER lift angle weight
+            dist_w = max(dist_w, 0.15);
+
+            float w = saturate((3.0 * dist_w * angle_w) / searchR);
+            if (w <= 0.0)
+                continue;
+
+            accum[i] = mix(accum[i], tapN, w);
+        }
+    }
+
+    return normalize(accum[0] + accum[1] + accum[2] + accum[3]);
 }
 
 
-// ------------------------------------------------------------------
-// MAIN
-// ------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Entry
+// -----------------------------------------------------------------------------
+
 void main()
 {
-    ivec2 size = imageSize(uNormalsOut);
-    ivec2 pix  = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imgSize = imageSize(uNormalsOut);
 
-    if (pix.x >= size.x || pix.y >= size.y)
+    if (gid.x >= imgSize.x || gid.y >= imgSize.y)
         return;
 
-    if (pc.Pass == 0u) {
-        vec4 n = ComputeNormalsAtPixel(pix);
-        imageStore(uNormalsOut, pix, compress(n));
+    vec2 texel = uFrame.TESR_ReciprocalResolution.xy;
+
+    if (pc.Pass == 0u)
+    {
+        vec3 n = ReconstructNormal(gid, imgSize, texel);
+        vec3 enc = n * 0.5 + 0.5;
+        imageStore(uNormalsOut, gid, vec4(enc, 1));
         return;
     }
 
-    vec2 offsetMask = (pc.Pass == 1u) ? OffsetMaskH : OffsetMaskV;
-    vec3 blurred = BlurNormalsAtPixel(pix, offsetMask);
-    imageStore(uNormalsOut, pix, vec4(compress(blurred), 1.0));
+    // PASS 1 — MK1 smoothing
+    vec3 sN = SmoothNormal_MK1(gid, imgSize, texel);
+    imageStore(uNormalsOut, gid, vec4(sN * 0.5 + 0.5, 1));
 }
-

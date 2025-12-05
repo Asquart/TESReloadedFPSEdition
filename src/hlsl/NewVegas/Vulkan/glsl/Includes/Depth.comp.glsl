@@ -25,6 +25,20 @@ mat4 TESR_MakeMat4FromRows(vec4 r0, vec4 r1, vec4 r2, vec4 r3)
     );
 }
 
+// Depth texture layout: .x = view-space depth / farZ (or similar), .y = clip-space z
+vec2 readDepthRaw(vec2 uv)
+{
+    // One texture fetch, caller decides how to interpret the channels
+    return texture(gDepth, uv).xy;
+}
+
+// Helper to match the old readDepth() semantics using a raw sample
+float readDepthFromRaw(vec2 rawDepth)
+{
+    // Keep exactly the same scaling as before
+    return rawDepth.x * farZ;
+}
+
 mat4 TESR_GetProjection()
 {
     vec4 r0 = uFrame.TESR_ProjectionTransform[0];
@@ -66,26 +80,36 @@ mat4 TESR_GetInvView()
 
 float readDepth(vec2 coord)
 {
-    // exactly like HLSL: tex2D(TESR_DepthBuffer, coord).x * farZ;
-    float z = texture(gDepth, coord).x;
-    return z * farZ;   // view-space depth
+    vec2 raw = readDepthRaw(coord);
+    return readDepthFromRaw(raw);
 }
-
-// --- Position reconstruction in view space ---
 
 vec3 reconstructPosition(vec2 uv)
 {
+    // ... compute x, y from uv as before ...
     float x = uv.x * 2.0 - 1.0;
     float y = (1.0 - uv.y) * 2.0 - 1.0;
-    float z = texture(gDepth, uv).y;   // matching HLSL .y
+    float z = readDepthRaw(uv).y; // clip-space z is in .y
 
     vec4 clipSpace = vec4(x, y, z, 1.0);
 
     mat4 invProj = TESR_GetInvProjection();
-
-    // row-vector style multiply, matching HLSL mul(clipSpace, InvProj)
     vec4 viewSpace = clipSpace * invProj;
+    viewSpace /= viewSpace.w;
+    return viewSpace.xyz;
+}
 
+vec3 reconstructPositionFromRawDepth(vec2 uv, vec2 rawDepth)
+{
+    // ... compute x, y from uv as before ...
+    float x = uv.x * 2.0 - 1.0;
+    float y = (1.0 - uv.y) * 2.0 - 1.0;
+    float z = rawDepth.y; // clip-space z is in .y
+
+    vec4 clipSpace = vec4(x, y, z, 1.0);
+
+    mat4 invProj = TESR_GetInvProjection();
+    vec4 viewSpace = clipSpace * invProj;
     viewSpace /= viewSpace.w;
     return viewSpace.xyz;
 }
