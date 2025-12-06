@@ -25,7 +25,7 @@ layout(set = 0, binding = 3) uniform sampler2D gColor;
 // -----------------------------------------------------------------------------
 
 layout(set = 1, binding = 0, rgba16f) readonly  uniform image2D mxaoIn;
-layout(set = 1, binding = 1, rgba16f) writeonly uniform image2D mxaoOut;
+layout(set = 1, binding = 1, rgba16f) uniform image2D mxaoOut;
 
 // -----------------------------------------------------------------------------
 // Push constants – MXAO-only parameters

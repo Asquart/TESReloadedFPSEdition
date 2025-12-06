@@ -42,6 +42,12 @@ const vec4 yellow  = vec4(1.0, 1.0, 0.0, 1.0);
 const vec4 cyan    = vec4(0.0, 1.0, 1.0, 1.0);
 const vec4 magenta = vec4(1.0, 0.0, 1.0, 1.0);
 
+void sincos(float a, out float s, out float c)
+{
+    s = sin(a);
+    c = cos(a);
+}
+
 // sRGB <-> linear conversions
 
 vec3 linearize(vec3 color) {

@@ -62,7 +62,7 @@ struct FVulkanMXAOSettings
 
     // AO kernel
     float SampleRadius       = 1.0f;
-    float SampleNormalBias   = 0.2f;
+    UINT SampleNormalBias   = 20;
 
     // AO / IL strength & curve
     float SSAOAmount         = 1.0f;
@@ -70,8 +70,8 @@ struct FVulkanMXAOSettings
     float Power              = 1.0f;
 
     // Depth fade (UI could be 0..100 and remapped to 0..1 in FillPushConstants)
-    float FadeDepthStart     = 0.0f;
-    float FadeDepthEnd       = 1.0f;
+    UINT FadeDepthStart     = 0;
+    UINT FadeDepthEnd       = 100;
 
     // Blur configuration
     float RenderScale        = 1.0f;

@@ -1,9 +1,9 @@
 #include "VulkanMXAO.h"
 
 // Factory macro:
-// REGISTER_VULKAN_EFFECT(FVulkanMXAO,
-//     EVulkanEffectPhase::PreTonemap,
-//     1); // order
+REGISTER_VULKAN_EFFECT(FVulkanMXAO,
+    EVulkanEffectPhase::PreTonemap,
+    1); // order
 
 FVulkanMXAO::FVulkanMXAO()
 {
@@ -22,16 +22,16 @@ void FVulkanMXAO::FillPushConstants(FVulkanMXAOPushConstants& out,
 
     // AO kernel
     out.SampleRadius      = Settings.SampleRadius;
-    out.SampleNormalBias  = Settings.SampleNormalBias;
+    out.SampleNormalBias  = Settings.SampleNormalBias * 0.01f;
 
     // AO / IL strength & curve
     out.SSAOAmount        = Settings.SSAOAmount;
     out.SSILAmount        = Settings.SSILAmount;
     out.Power             = Settings.Power;
 
-    // Depth fade – assume UI is 0..1 already; if you prefer 0..100, divide here.
-    out.FadeDepthStart    = Settings.FadeDepthStart;
-    out.FadeDepthEnd      = Settings.FadeDepthEnd;
+    // Depth fade
+    out.FadeDepthStart    = Settings.FadeDepthStart * 0.01f;
+    out.FadeDepthEnd      = Settings.FadeDepthEnd * 0.01f;
 
     // Blur config
     out.RenderScale       = Settings.RenderScale;
@@ -435,12 +435,12 @@ void FVulkanMXAO::UpdateSettingsFromNvr()
     Settings.GlobalSamplePreset = TheSettingManager->GetSettingI(section, "GlobalSamplePreset");
     Settings.BaseSampleCount    = TheSettingManager->GetSettingI(section, "BaseSampleCount");
     Settings.SampleRadius       = TheSettingManager->GetSettingF(section, "SampleRadius");
-    Settings.SampleNormalBias   = TheSettingManager->GetSettingF(section, "SampleNormalBias");
+    Settings.SampleNormalBias   = TheSettingManager->GetSettingI(section, "SampleNormalBias");
     Settings.SSAOAmount         = TheSettingManager->GetSettingF(section, "SSAOAmount");
     Settings.SSILAmount         = TheSettingManager->GetSettingF(section, "SSILAmount");
     Settings.Power              = TheSettingManager->GetSettingF(section, "Power");
-    Settings.FadeDepthStart     = TheSettingManager->GetSettingF(section, "FadeDepthStart");
-    Settings.FadeDepthEnd       = TheSettingManager->GetSettingF(section, "FadeDepthEnd");
+    Settings.FadeDepthStart     = TheSettingManager->GetSettingI(section, "FadeDepthStart");
+    Settings.FadeDepthEnd       = TheSettingManager->GetSettingI(section, "FadeDepthEnd");
     Settings.RenderScale        = TheSettingManager->GetSettingF(section, "RenderScale");
     Settings.BlurRadius1        = TheSettingManager->GetSettingF(section, "BlurRadius1");
     Settings.BlurRadius2        = TheSettingManager->GetSettingF(section, "BlurRadius2");
@@ -516,13 +516,13 @@ void FVulkanMXAO::BuildSettingsDescriptors()
         d.id       = "SampleNormalBias";
         d.label    = "Normal Bias";
         d.group    = "Main";
-        d.type     = VulkanSettingType::Float;
-        d.minValue = 0.0f;
-        d.maxValue = 1.0f;
-        d.step     = 0.01f;
+        d.type     = VulkanSettingType::Int;
+        d.minValue = 0;
+        d.maxValue = 100;
+        d.step     = 1;
 
-        d.getFloat = [this]() { return Settings.SampleNormalBias; };
-        d.setFloat = [this](float v) { Settings.SampleNormalBias = v; };
+        d.getInt = [this]() { return Settings.SampleNormalBias; };
+        d.setInt = [this](int v) { Settings.SampleNormalBias = v; };
 
         SettingDescs.push_back(std::move(d));
     }
@@ -580,13 +580,13 @@ void FVulkanMXAO::BuildSettingsDescriptors()
         d.id       = "FadeDepthStart";
         d.label    = "Fade Depth Start";
         d.group    = "Main";
-        d.type     = VulkanSettingType::Float;
-        d.minValue = 0.0f;
-        d.maxValue = 1.0f;
-        d.step     = 0.01f;
+        d.type     = VulkanSettingType::Int;
+        d.minValue = 0;
+        d.maxValue = 100;
+        d.step     = 1;
 
-        d.getFloat = [this]() { return Settings.FadeDepthStart; };
-        d.setFloat = [this](float v) { Settings.FadeDepthStart = v; };
+        d.getInt = [this]() { return Settings.FadeDepthStart; };
+        d.setInt = [this](int v) { Settings.FadeDepthStart = v; };
 
         SettingDescs.push_back(std::move(d));
     }
@@ -596,13 +596,13 @@ void FVulkanMXAO::BuildSettingsDescriptors()
         d.id       = "FadeDepthEnd";
         d.label    = "Fade Depth End";
         d.group    = "Main";
-        d.type     = VulkanSettingType::Float;
-        d.minValue = 0.0f;
-        d.maxValue = 1.0f;
-        d.step     = 0.01f;
+        d.type     = VulkanSettingType::Int;
+        d.minValue = 0;
+        d.maxValue = 100;
+        d.step     = 1;
 
-        d.getFloat = [this]() { return Settings.FadeDepthEnd; };
-        d.setFloat = [this](float v) { Settings.FadeDepthEnd = v; };
+        d.getInt = [this]() { return Settings.FadeDepthEnd; };
+        d.setInt = [this](int v) { Settings.FadeDepthEnd = v; };
 
         SettingDescs.push_back(std::move(d));
     }

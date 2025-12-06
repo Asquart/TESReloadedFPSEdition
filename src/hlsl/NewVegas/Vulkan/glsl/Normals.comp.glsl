@@ -129,6 +129,8 @@ vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
 
     vec2 aspect = GetAspectRatio();
 
+    float zCenter = max(centerP.z, 1.0);
+
     float smoothRadiusPixels = pc.SmoothRadius;                // radius in pixels
     vec2 texelSize          = texel;              // 1 / resolution
     vec2 scaled_radius      = smoothRadiusPixels * texelSize * aspect;
@@ -177,11 +179,29 @@ vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
                 continue;
 
             // --- 1) Sample normal first ---
+            // --- 1) Sample normal first ---
             vec3 tapN = expand(textureLod(uNormalsIn, tap_uv, 0.0).rgb);
 
-            // Crease / hard edge gate
+            // Distance-aware crease threshold:
+            //  - near: looser (more smoothing on curved armor/barrels)
+            //  - far: tighter (avoid smoothing across distant low-poly facets)
             float creaseDot = dot(centerN, tapN);
-            if (creaseDot < pc.CreaseThreshold)     // e.g. 0.86–0.90
+
+            // Gamebryo units (~70 per meter)
+            const float zNearCrease = 300.0;   // ~4–5 m
+            const float zFarCrease  = 2000.0;  // ~28 m
+
+            // Near: allow more smoothing across curvature
+            float creaseClose = pc.CreaseThreshold - 0.10;   // e.g. 0.88 -> 0.78
+            // Far: be stricter to avoid cross-facet smoothing
+            float creaseFar   = min(0.98, pc.CreaseThreshold + 0.05);
+
+            // Blend between near/far thresholds based on depth
+            float creaseT  = saturate((zCenter - zNearCrease) / (zFarCrease - zNearCrease));
+            float creaseTh = mix(creaseClose, creaseFar, creaseT);
+
+            // Crease gate: looser near, tighter far
+            if (creaseDot < creaseTh)
                 continue;
 
             // --- 2) Angle gate (user-controlled) ---
@@ -189,6 +209,7 @@ vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
             float angle_w = smoothstep(pc.MinSmoothingAngle, pc.MaxSmoothingAngle, ndot);
             if (angle_w <= 0.0)
                 continue;
+
 
             // --- 3) Reconstruct position ONLY if normal tests passed ---
             vec3 tapP = reconstructPosition(tap_uv);
@@ -222,14 +243,28 @@ vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
             float dist_w = saturate(1.0 - dist2_mix / searchR);
 
             // --- 5) Coherence test vs accumulator ---
+            // --- 5) Coherence test vs accumulator (distance-aware) ---
             float nd_acc = dot(accum[i], tapN);
-            if (nd_acc < 0.90)
+
+            // Gamebryo units (~70 per meter)
+            const float zNearCo = 300.0;   // ~4–5 m: very close
+            const float zFarCo  = 2000.0;  // ~28 m: far
+
+            // Near: allow more deviation so curved close surfaces can smooth
+            float coNear = 0.75;   // was 0.90, much looser up close
+            // Far: keep strict to avoid cross-facet smoothing
+            float coFar  = 0.85;
+
+            float coT   = saturate((zCenter - zNearCo) / (zFarCo - zNearCo));
+            float coTh  = mix(coNear, coFar, coT);
+
+            if (nd_acc < coTh)
                 continue;
 
-            // --- 6) "Same surface" floor (your 0.3) only for good taps ---
+            // --- 6) "Same surface" floor (0.3) only for good taps ---
             bool sameSurface =
                 (dzRel < depthSameThreshold) &&
-                (nd_acc >= 0.90) &&
+                (nd_acc >= coTh) &&
                 (angle_w > 0.0);
 
             float minFloor = 0.3;
@@ -237,6 +272,7 @@ vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
             {
                 dist_w = max(dist_w, minFloor);
             }
+
 
             // --- 7) Final weight and accumulate ---
             float w = saturate((3.0 * dist_w * angle_w) / searchR);
