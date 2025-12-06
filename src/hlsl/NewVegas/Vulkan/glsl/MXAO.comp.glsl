@@ -1,4 +1,5 @@
 #version 450
+#extension GL_GOOGLE_include_directive : enable
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -6,9 +7,9 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // Includes: global layout, depth helpers, generic helpers, normal helpers
 // -----------------------------------------------------------------------------
 
-#include "Depth.comp.glsl"          // gDepth, uFrame, nearZ/farZ, reconstructPosition(), etc.
-#include "Helpers.comp.glsl"        // saturate, UVToPixel, etc.
-#include "NormalsHelpers.comp.glsl" // GetNormal()
+#include "Includes/Depth.comp.glsl"          // gDepth, uFrame, nearZ/farZ, reconstructPosition(), etc.
+#include "Includes/Helpers.comp.glsl"        // saturate, UVToPixel, etc.
+#include "Includes/NormalsHelpers.comp.glsl" // GetNormal()
 
 // -----------------------------------------------------------------------------
 // SET 0 – global resources

@@ -17,8 +17,8 @@ layout(set = 1, binding = 1) uniform sampler2D uNormalsIn;
 // -----------------------------------------------------------------------------
 layout(push_constant) uniform PushConstants {
     uint  Pass;               // 0 = reconstruct, 1 = smooth
-    uint  SmoothNumDirs;      // 4 recommended
-    uint  SmoothNumSteps;     // 2 recommended
+    uint  SmoothNumDirs;      // 4+ recommended
+    uint  SmoothNumSteps;     // 2-4 recommended
     float SmoothRadius;
     float MinSmoothingAngle;
     float MaxSmoothingAngle;
@@ -176,85 +176,76 @@ vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
                 tap_uv.y < 0.0 || tap_uv.y > 1.0)
                 continue;
 
-            // Sample normal first
+            // --- 1) Sample normal first ---
             vec3 tapN = expand(textureLod(uNormalsIn, tap_uv, 0.0).rgb);
 
-            // Early angle gate: if angle is clearly outside band, skip heavy work
-            float angleMin = 0.2;
-            float angleMax = 0.95;
-            float ndot = dot(centerN, tapN);
-            if (ndot <= angleMin)
+            // Crease / hard edge gate
+            float creaseDot = dot(centerN, tapN);
+            if (creaseDot < pc.CreaseThreshold)     // e.g. 0.86–0.90
                 continue;
 
-            float angle_w = smoothstep(angleMin, angleMax, ndot);
+            // --- 2) Angle gate (user-controlled) ---
+            float ndot    = creaseDot;
+            float angle_w = smoothstep(pc.MinSmoothingAngle, pc.MaxSmoothingAngle, ndot);
             if (angle_w <= 0.0)
                 continue;
 
-            // Only for taps that passed angle test, reconstruct position
+            // --- 3) Reconstruct position ONLY if normal tests passed ---
             vec3 tapP = reconstructPosition(tap_uv);
 
-            vec3 dp   = tapP - centerP;
+            // --- 4) Distance logic with depth-aware mixing ---
+            vec3 dp        = tapP - centerP;
             float dist2_raw = dot(dp, dp);
 
-            // How different are the depths (relative)?
             float zCenter = max(centerP.z, 1.0);
             float dzRel   = abs(tapP.z - centerP.z) / zCenter;
 
-            // Depth-normalized distance: same surface separation feels "closer" at large Z
             float dist2_norm = dist2_raw / (zCenter * zCenter);
 
-            // Only relax distance falloff for taps on (roughly) the same depth layer
-            // and only when the pixel is far enough away.
-
-            // "Same surface" depth threshold (in relative terms)
-            const float depthSameThreshold = 0.08;  // 8% relative depth difference
-
-            // Gamebryo scale: ~70 units per meter
-            // So 500 ≈ 7m, 2000 ≈ 28m
-            const float z0 = 500.0;   // start "helping" far geometry (~7m)
-            const float z1 = 2000.0;  // fully relaxed by this depth (~28m)
-
+            const float depthSameThreshold = 0.08;   // same depth layer
+            const float z0 = 500.0;                  // start "far" (~7m)
+            const float z1 = 2000.0;                 // fully far (~28m)
             float farT = saturate((zCenter - z0) / (z1 - z0));
 
             float dist2_mix;
             if (dzRel < depthSameThreshold)
             {
-                // Same depth layer: blend between raw and normalized distance as we go far
+                // same layer → relax distance with depth
                 dist2_mix = mix(dist2_raw, dist2_norm, farT);
             }
             else
             {
-                // Different depth layers: keep raw distance (strong falloff, halo-safe)
+                // different layer → keep strict distance
                 dist2_mix = dist2_raw;
             }
 
-            // Distance weight using mixed distance
-            // 1. Base distance weight
             float dist_w = saturate(1.0 - dist2_mix / searchR);
 
-            // 2. Determine if this tap is "same surface"
+            // --- 5) Coherence test vs accumulator ---
+            float nd_acc = dot(accum[i], tapN);
+            if (nd_acc < 0.90)
+                continue;
+
+            // --- 6) "Same surface" floor (your 0.3) only for good taps ---
             bool sameSurface =
-                (creaseDot >= pc.CreaseThreshold) &&
                 (dzRel < depthSameThreshold) &&
                 (nd_acc >= 0.90) &&
                 (angle_w > 0.0);
 
-            // 3. Apply the minimum ONLY if it's same-surface AND center is close to camera
-            //    Reason: far surfaces already get normalized smoothing; close surfaces need help.
             float minFloor = 0.3;
             if (sameSurface)
             {
                 dist_w = max(dist_w, minFloor);
             }
 
-            // 4. Final weight
+            // --- 7) Final weight and accumulate ---
             float w = saturate((3.0 * dist_w * angle_w) / searchR);
             if (w <= 0.0)
                 continue;
 
             accum[i] = mix(accum[i], tapN, w);
-
         }
+
     }
 
     return normalize(accum[0] + accum[1] + accum[2] + accum[3]);
