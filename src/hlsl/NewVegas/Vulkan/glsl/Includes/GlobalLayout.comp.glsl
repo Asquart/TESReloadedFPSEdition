@@ -58,3 +58,5 @@ layout(set = 0, binding = 2, std140) uniform GlobalFrameUBO
     vec4 TESR_HorizonColor;
 
 } uFrame;
+
+layout(set = 0, binding = 3) uniform sampler2D gSceneColor;

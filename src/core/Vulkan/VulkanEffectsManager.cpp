@@ -165,6 +165,8 @@ void FVulkanEffectsManager::RenderPreTonemapping(IDirect3DSurface9* InSceneColor
 {
     DXVK_CheckReturn()
 
+    TryInitSceneColorSurface(InSceneColor);
+    
     GlobalResources.UpdatePerFrame();
     for (auto& EffectPair : EffectsPreTonemap)
     {
@@ -292,6 +294,15 @@ FVulkanInteropSurface* FVulkanEffectsManager::GetBlueNoiseSurface()
         InitializeBlueNoiseSurface();
     }
     return &BlueNoiseSurface;
+}
+
+FVulkanInteropSurface* FVulkanEffectsManager::GetSceneColorSurface()
+{
+    if (!SceneColorSurface.IsValid())
+    {
+        return nullptr;
+    }
+    return &SceneColorSurface;
 }
 
 IVulkanEffect* FVulkanEffectsManager::GetEffectByName(std::string InName, EVulkanEffectPhase InPhase)
@@ -437,6 +448,106 @@ void FVulkanEffectsManager::InitializeBlueNoiseSurface()
     InteropManager.RegisterExternalTexture(VulkanEffectsManagerLocal::BlueNoiseTextureName, NoiseTex);
 
     NoiseTex->Release();
+}
+
+void FVulkanEffectsManager::TryInitSceneColorSurface(IDirect3DSurface9* InSurface)
+{
+    if (!InSurface)
+    {
+        Logger::Log("FVulkanEffectsManager::TryInitSceneColorSurface: InSurface is invalid");
+        return;
+    }
+
+    // Describe to get size/format
+    D3DSURFACE_DESC Desc{};
+    TheShaderManager->Effects.CombineDepth->Textures.CombinedDepthSurface->GetDesc(&Desc);
+
+    if (SceneColorSurface.IsValid() && SceneColorSurface.D3DSurface == InSurface && Desc.Width == SceneColorSurface.Height && Desc.Width == SceneColorSurface.Height)
+    {
+        return;
+    }
+    
+    // Cleanup previous
+    if (SceneColorSurface.View) {
+        p_vkDestroyImageView(VULKAN_CONTEXT.Device, SceneColorSurface.View, nullptr);
+        SceneColorSurface.View = VK_NULL_HANDLE;
+    }
+    if (SceneColorSurface.D3DSurface) {
+        SceneColorSurface.D3DSurface->Release();
+        SceneColorSurface.D3DSurface = nullptr;
+    }
+    if (SceneColorSurface.D3DTexture) {
+        SceneColorSurface.D3DTexture->Release();
+        SceneColorSurface.D3DTexture = nullptr;
+    }
+    SceneColorSurface.InteropTex = nullptr;
+    SceneColorSurface.Image = VK_NULL_HANDLE;
+    SceneColorSurface.Layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    SceneColorSurface.CreateInfo = {};
+
+    // Keep the surface
+    SceneColorSurface.D3DSurface = TheShaderManager->Effects.CombineDepth->Textures.CombinedDepthSurface;
+    SceneColorSurface.D3DSurface->AddRef();
+
+    // Try to grab container texture (optional but nice)
+    IUnknown* container = nullptr;
+    if (SUCCEEDED(TheShaderManager->Effects.CombineDepth->Textures.CombinedDepthSurface->GetContainer(IID_IDirect3DTexture9, (void**)&container)) && container) {
+        DepthSurface.D3DTexture = (IDirect3DTexture9*)container; // GetContainer already AddRef
+    }
+
+    SceneColorSurface.Width = Desc.Width;
+    SceneColorSurface.Height = Desc.Height;
+    SceneColorSurface.Format = Desc.Format; // should be D3DFMT_G32R32F for NVR combined
+
+    // Get interop
+    HRESULT hr = SceneColorSurface.D3DSurface->QueryInterface(
+        __uuidof(ID3D9VkInteropTexture),
+        (void**)&SceneColorSurface.InteropTex);
+
+    if (FAILED(hr) || !SceneColorSurface.InteropTex.ptr()) {
+        Logger::Log("FVulkanEffectsManager::TryInitSceneColorSurface: QI(ID3D9VkInteropTexture) failed hr=0x%08X", hr);
+        return;
+    }
+
+    VkImage        img = VK_NULL_HANDLE;
+    VkImageLayout  dummyLayout = {};
+    VkImageCreateInfo dummyCi = {};
+
+    hr = SceneColorSurface.InteropTex->GetVulkanImageInfo(&img, &dummyLayout, &dummyCi);
+    Logger::Log("FVulkanEffectsManager::TryInitSceneColorSurface: GetVulkanImageInfo hr=0x%08X image=%p fmt=%d",
+        hr, img, dummyCi.format);
+
+    if (!img) {
+        Logger::Log("FVulkanEffectsManager::TryInitSceneColorSurface: null VkImage");
+        return;
+    }
+
+    SceneColorSurface.Image = img;
+    SceneColorSurface.Layout = VK_IMAGE_LAYOUT_UNDEFINED; // we won't trust or touch it
+    SceneColorSurface.CreateInfo = {};
+    SceneColorSurface.CreateInfo.format = VK_FORMAT_R16G16B16A16_SFLOAT; // hardcoded format from DXVK for NVR CombinedDepthTexture specifically
+
+    VkImageViewCreateInfo iv{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    iv.image = SceneColorSurface.Image;
+    iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    iv.format = SceneColorSurface.CreateInfo.format;
+    iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    iv.subresourceRange.baseMipLevel = 0;
+    iv.subresourceRange.levelCount = 1;
+    iv.subresourceRange.baseArrayLayer = 0;
+    iv.subresourceRange.layerCount = 1;
+
+    VkResult rv = p_vkCreateImageView(VULKAN_CONTEXT.Device, &iv, nullptr, &SceneColorSurface.View);
+    if (rv != VK_SUCCESS || SceneColorSurface.View == VK_NULL_HANDLE) {
+        Logger::Log("FVulkanEffectsManager::TryInitSceneColorSurface: vkCreateImageView FAILED rv=%d fmt=%d",
+            rv, DepthSurface.CreateInfo.format);
+        SceneColorSurface.View = VK_NULL_HANDLE;
+        SceneColorSurface.InteropTex = nullptr;
+        return;
+    }
+
+    Logger::Log("FVulkanEffectsManager::TryInitSceneColorSurface: OK image=%d view=%d fmt=%d", SceneColorSurface.Image, SceneColorSurface.View, SceneColorSurface.CreateInfo.format);
+
 }
 
 void FVulkanEffectsManager::RegisterEffects()

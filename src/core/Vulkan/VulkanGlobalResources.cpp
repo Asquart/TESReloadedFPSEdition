@@ -50,22 +50,30 @@ void FVulkanGlobalResources::UpdatePerFrame()
     uboInfo.offset = 0;
     uboInfo.range  = sizeof(FGlobalFrameUBO);
 
-    // Depth
-    FVulkanInteropSurface* DepthSurface   = TheVulkanEffectsManager->GetDepthSurface();
-    FVulkanInteropSurface* NormalsSurface = TheVulkanEffectsManager->GetNormalsSurface();
+    // Depth / Normals / SceneColor surfaces
+    FVulkanInteropSurface* DepthSurface      = TheVulkanEffectsManager->GetDepthSurface();
+    FVulkanInteropSurface* NormalsSurface    = TheVulkanEffectsManager->GetNormalsSurface();
+    FVulkanInteropSurface* SceneColorSurface = TheVulkanEffectsManager->GetSceneColorSurface(); // <- you should already have something like this; if the name differs, adjust here.
 
+    // Depth
     VkDescriptorImageInfo depthInfo{};
-    depthInfo.sampler     = Vulkan.SamplerPointClamp;           // matches TESR_DepthBuffer point sampling
+    depthInfo.sampler     = Vulkan.SamplerPointClamp;
     depthInfo.imageView   = DepthSurface ? DepthSurface->View : VK_NULL_HANDLE;
     depthInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     // Normals
     VkDescriptorImageInfo normalsInfo{};
-    normalsInfo.sampler     = Vulkan.SamplerPointClamp;         // NVR normals are sampled with point filtering
+    normalsInfo.sampler     = Vulkan.SamplerPointClamp;
     normalsInfo.imageView   = NormalsSurface ? NormalsSurface->View : VK_NULL_HANDLE;
     normalsInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    VkWriteDescriptorSet writes[3] = {};
+    // Scene color (pre-tonemap)
+    VkDescriptorImageInfo sceneInfo{};
+    sceneInfo.sampler     = Vulkan.SamplerPointClamp; // or Vulkan.SamplerLinearClamp if you have it and prefer filtered IL
+    sceneInfo.imageView   = SceneColorSurface ? SceneColorSurface->View : VK_NULL_HANDLE;
+    sceneInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkWriteDescriptorSet writes[4] = {};
 
     // binding 0: gDepth
     writes[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -91,7 +99,15 @@ void FVulkanGlobalResources::UpdatePerFrame()
     writes[2].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     writes[2].pBufferInfo     = &uboInfo;
 
-    p_vkUpdateDescriptorSets(Device, 3, writes, 0, nullptr);
+    // binding 3: gSceneColor
+    writes[3].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[3].dstSet          = GlobalSets.GlobalFrameDescriptorSet;
+    writes[3].dstBinding      = 3;
+    writes[3].descriptorCount = 1;
+    writes[3].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writes[3].pImageInfo      = &sceneInfo;
+
+    p_vkUpdateDescriptorSets(Device, 4, writes, 0, nullptr);
 }
 
 
@@ -147,7 +163,7 @@ void FVulkanGlobalResources::CreateFrameSet()
     }
 
     // 1) Descriptor set layout: binding 0 = depth sampler, 1 = normals sampler, 2 = UBO
-    VkDescriptorSetLayoutBinding bindings[3] = {};
+    VkDescriptorSetLayoutBinding bindings[4] = {};
 
     // binding 0: depth sampler
     bindings[0].binding            = 0;
@@ -167,8 +183,14 @@ void FVulkanGlobalResources::CreateFrameSet()
     bindings[2].descriptorCount    = 1;
     bindings[2].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
+    // binding 3: scene color sampler (pre-tonemap scene color)
+    bindings[3].binding            = 3;
+    bindings[3].descriptorType     = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[3].descriptorCount    = 1;
+    bindings[3].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
     VkDescriptorSetLayoutCreateInfo layoutInfo{ VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
-    layoutInfo.bindingCount = 3;
+    layoutInfo.bindingCount = 4;
     layoutInfo.pBindings    = bindings;
 
     VkResult vr = p_vkCreateDescriptorSetLayout(Device, &layoutInfo, nullptr, &GlobalSets.GlobalFrameSetLayout);
@@ -224,9 +246,9 @@ void FVulkanGlobalResources::CreateFrameSet()
 
     // 3) Descriptor pool + set
     VkDescriptorPoolSize poolSizes[2] = {};
-    // depth + normals
+    // depth + normals + scene color
     poolSizes[0].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[0].descriptorCount = 2;
+    poolSizes[0].descriptorCount = 3;
     // UBO
     poolSizes[1].type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[1].descriptorCount = 1;

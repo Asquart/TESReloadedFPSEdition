@@ -28,6 +28,7 @@ public:
     FVulkanInteropSurface* GetDepthSurface();
     FVulkanInteropSurface* GetNormalsSurface();
     FVulkanInteropSurface* GetBlueNoiseSurface();
+    FVulkanInteropSurface* GetSceneColorSurface();
 
     IVulkanEffect* GetEffectByName(std::string InName, EVulkanEffectPhase InPhase);
 
@@ -39,6 +40,7 @@ private:
 
     FVulkanInteropSurface DepthSurface{};
     FVulkanInteropSurface BlueNoiseSurface {};
+    FVulkanInteropSurface SceneColorSurface {};
 
     std::unordered_map<std::string, std::unique_ptr<IVulkanEffect>> EffectsPreTonemap;
     std::unordered_map<std::string, std::unique_ptr<IVulkanEffect>> EffectsPostTonemap;
@@ -50,4 +52,5 @@ private:
     void InitializeDepthSurface();
     void InitializeNormalsSurface();
     void InitializeBlueNoiseSurface();
+    void TryInitSceneColorSurface(IDirect3DSurface9* InSurface);
 };

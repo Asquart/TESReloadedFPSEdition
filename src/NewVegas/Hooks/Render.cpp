@@ -145,11 +145,8 @@ void __cdecl ProcessImageSpaceShadersHook(
 
 	if (TheSettingManager->SettingsMain.Main.RenderPreTonemapping) {
 
-		// 1) Get game’s RT surface (engine-owned, NOT interop)
+		// 1) Get gameï¿½s RT surface (engine-owned, NOT interop)
 		SourceTarget->GetD3DTexture(0)->GetSurfaceLevel(0, &GameSurface);
-
-		// 3) Copy game RT - our DXVK-compatible RT
-		//Device->StretchRect(GameSurface, nullptr, TheVulkanTestShader->GInteropSurface, nullptr, D3DTEXF_POINT);
 
 		// 4) Usual NVR state setup
 		RenderState->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE, RenderStateArgs);
@@ -169,7 +166,7 @@ void __cdecl ProcessImageSpaceShadersHook(
 		RenderState->SetRenderState(D3DRS_NORMALIZENORMALS, D3DZB_FALSE, RenderStateArgs);
 		RenderState->SetRenderState(D3DRS_POINTSIZE, 810365505, RenderStateArgs);
 
-		// 5) Let NVR do any pre-tonemap FX (still on the real GameSurface if you like)
+		// 5) Let NVR do any pre-tonemap 
 		TheShaderManager->RenderEffectsPreTonemapping(GameSurface);
 		TheVulkanEffectsManager->RenderPreTonemapping(GameSurface);
 	}

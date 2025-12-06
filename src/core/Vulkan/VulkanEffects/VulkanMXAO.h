@@ -127,7 +127,7 @@ protected:
     void UpdateSettingsFromNvr() override;
 
     // FComputeEffectBase overrides
-    uint32_t   GetPassCount() const override { return 3; } // 0:AO, 1:blur, 2:blur+composite
+    uint32_t   GetPassCount() const override { return 1; } // 0:AO, 1:blur, 2:blur+composite
     VkExtent2D GetDispatchExtent() const override;
     bool       PrepareResourcesForSubmit() override;
     void       RecordPassCommands(VkCommandBuffer cmd,

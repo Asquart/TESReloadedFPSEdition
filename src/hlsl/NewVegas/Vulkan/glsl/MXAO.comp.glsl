@@ -4,32 +4,25 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 // -----------------------------------------------------------------------------
-// Includes: global layout, depth helpers, generic helpers, normal helpers
+// Includes – these provide:
+//   - uFrame, gDepth, nearZ/farZ, readDepth(), reconstructPosition()   (Depth)
+//   - saturate(), UVToPixel(), etc.                                   (Helpers)
+//   - access to gNormals + GetNormal()                                (Normals)
 // -----------------------------------------------------------------------------
 
-#include "Includes/Depth.comp.glsl"          // gDepth, uFrame, nearZ/farZ, reconstructPosition(), etc.
-#include "Includes/Helpers.comp.glsl"        // saturate, UVToPixel, etc.
-#include "Includes/NormalsHelpers.comp.glsl" // GetNormal()
+#include "Includes/Depth.comp.glsl"
+#include "Includes/Helpers.comp.glsl"
+#include "Includes/NormalsHelpers.comp.glsl"
 
 // -----------------------------------------------------------------------------
-// SET 0 – global resources
-//   NOTE: gDepth + gNormals + uFrame are declared in GlobalLayout via Depth.comp.glsl.
-// -----------------------------------------------------------------------------
-
-// Scene color / albedo for IL sampling.
-// Make sure your global descriptor set binds this at set = 0, binding = 3.
-layout(set = 0, binding = 3) uniform sampler2D gColor;
-
-// -----------------------------------------------------------------------------
-// SET 1 – MXAO-specific surfaces (ping-pong + final composite target)
+// SET 1 – MXAO ping-pong / composite targets
 // -----------------------------------------------------------------------------
 
 layout(set = 1, binding = 0, rgba16f) readonly  uniform image2D mxaoIn;
-layout(set = 1, binding = 1, rgba16f) uniform image2D mxaoOut;
+layout(set = 1, binding = 1, rgba16f) writeonly uniform image2D mxaoOut;
 
 // -----------------------------------------------------------------------------
 // Push constants – MXAO-only parameters
-//   All global stuff (resolution, matrices, near/farZ, etc.) comes from uFrame.
 // -----------------------------------------------------------------------------
 
 layout(push_constant) uniform MXAOPush
@@ -37,56 +30,54 @@ layout(push_constant) uniform MXAOPush
     int   Pass;                 // 0: AO gen, 1: blur1, 2: blur2 + shape + composite
 
     // Sampling / quality
-    uint  GlobalSamplePreset;   // qUINT MXAO_GLOBAL_SAMPLE_QUALITY_PRESET
-    uint  BaseSampleCount;      // MXAO.samples base value
+    uint  GlobalSamplePreset;
+    uint  BaseSampleCount;
 
     // AO kernel
-    float SampleRadius;         // MXAO_SAMPLE_RADIUS
-    float SampleNormalBias;     // MXAO_SAMPLE_NORMAL_BIAS
+    float SampleRadius;
+    float SampleNormalBias;
 
     // AO / IL strength & curve
-    float SSAOAmount;           // MXAO_SSAO_AMOUNT
-    float SSILAmount;           // MXAO_SSIL_AMOUNT
-    float Power;                // MXAO_POWER
+    float SSAOAmount;
+    float SSILAmount;
+    float Power;
 
-    // Depth fade (0..1 in view-space normalized depth)
-    float FadeDepthStart;       // MXAO_FADE_DEPTH_START
-    float FadeDepthEnd;         // MXAO_FADE_DEPTH_END
+    // Depth fade (0..1 in normalized view depth)
+    float FadeDepthStart;
+    float FadeDepthEnd;
 
     // Blur configuration
-    float RenderScale;          // MXAO_GLOBAL_RENDER_SCALE (for low-res AO later if you want)
-    float BlurRadius1;          // SpatialFilter1 kernel radius
-    float BlurRadius2;          // SpatialFilter2 kernel radius
-    uint  BlurSteps1;           // blur taps 1 (1..8)
-    uint  BlurSteps2;           // blur taps 2 (1..8)
+    float RenderScale;
+    float BlurRadius1;
+    float BlurRadius2;
+    uint  BlurSteps1;
+    uint  BlurSteps2;
 
     // Toggles / misc
-    uint  EnableIL;             // MXAO_ENABLE_IL
-    uint  TwoLayer;             // MXAO_TWO_LAYER
-    uint  HighQuality;          // MXAO_HIGH_QUALITY
-    uint  DebugView;            // 0 = normal, 1 = AO override
+    uint  EnableIL;
+    uint  TwoLayer;
+    uint  HighQuality;
+    uint  DebugView;        // 0 = normal composite, 1 = AO override
 
     // Two-layer AO intensity
-    float AmountCoarse;         // MXAO_AMOUNT_COARSE
-    float AmountFine;           // MXAO_AMOUNT_FINE
+    float AmountCoarse;
+    float AmountFine;
 } pc;
 
 // -----------------------------------------------------------------------------
-// Small helpers using your global UBO
+// Helpers that use your global UBO
 // -----------------------------------------------------------------------------
-
-vec2 GetResolution()
-{
-    // TESR_ReciprocalResolution.xy = (1/width, 1/height)
-    return vec2(
-        1.0 / uFrame.TESR_ReciprocalResolution.x,
-        1.0 / uFrame.TESR_ReciprocalResolution.y
-    );
-}
 
 vec2 GetInvResolution()
 {
+    // TESR_ReciprocalResolution.xy = (1/width, 1/height)
     return uFrame.TESR_ReciprocalResolution.xy;
+}
+
+vec2 GetResolution()
+{
+    vec2 invRes = GetInvResolution();
+    return vec2(1.0 / invRes.x, 1.0 / invRes.y);
 }
 
 vec2 GetAspect(vec2 resolution)
@@ -95,7 +86,7 @@ vec2 GetAspect(vec2 resolution)
 }
 
 // -----------------------------------------------------------------------------
-// qUINT sample_parameter_setup()
+// qUINT sample_parameter_setup
 // -----------------------------------------------------------------------------
 
 void sampleParameterSetup(float scaledDepth, float layerId, int sampleCount,
@@ -117,41 +108,40 @@ void sampleParameterSetup(float scaledDepth, float layerId, int sampleCount,
 }
 
 // -----------------------------------------------------------------------------
-// Pass 0 – AO/IL generation (PS_AmbientObscurance-like)
+// Pass 0 – AO/IL generation
 // -----------------------------------------------------------------------------
 
 vec4 evaluateMXAO(ivec2 pix, vec2 invRes, vec2 aspect)
 {
     vec2 uv = (vec2(pix) + 0.5) * invRes;
 
-    // View-space position from your Depth.comp.glsl helper
+    // view-space position & normal from your helpers
     vec3 position = reconstructPosition(uv);
     vec3 normal   = GetNormal(uv, gNormals);
 
-    // qUINT jitter pattern
+    // jitter pattern (same as qUINT)
     vec2 mod4     = floor(mod(vec2(pix), vec2(4.0)) + vec2(0.1));
     float jitter  = dot(mod4, vec2(0.0625, 0.25)) + 0.0625;
 
     float layerId = float((pix.x + pix.y) & 1);
 
-    float viewDepth       = readDepth(uv);     // view-space depth in world units
-    float depthNormalized = viewDepth / farZ;  // 0..1
-    position             += normal * depthNormalized;
+    float viewDepth       = readDepth(uv);   // view space depth
+    float depthNorm       = viewDepth / farZ;
+    position             += normal * depthNorm;
 
     int sampleCount = int(pc.BaseSampleCount);
     if (pc.GlobalSamplePreset == 7u)
     {
-        sampleCount = int(2.0 + floor(0.05 * pc.SampleRadius / max(depthNormalized, 1e-4)));
+        sampleCount = int(2.0 + floor(0.05 * pc.SampleRadius / max(depthNorm, 1e-4)));
     }
 
     float scaledRadius;
     float falloffFactor;
     sampleParameterSetup(position.z, layerId, sampleCount, scaledRadius, falloffFactor);
 
-    vec2 sampleDir;
     float s, c;
     sincos(2.3999632 * 16.0 * jitter, s, c);
-    sampleDir = vec2(s, c) * scaledRadius;
+    vec2 sampleDir = vec2(s, c) * scaledRadius;
 
     vec4 accum = vec4(0.0);
 
@@ -182,7 +172,7 @@ vec4 evaluateMXAO(ivec2 pix, vec2 invRes, vec2 aspect)
         {
             if (sampleAO > 0.1)
             {
-                vec3 sampleColor  = textureLod(gColor,   tapUV, sampleMip).rgb;
+                vec3 sampleColor  = textureLod(gSceneColor,   tapUV, sampleMip).rgb;
                 vec3 sampleNormal = GetNormal(tapUV, gNormals);
 
                 vec3 il = sampleColor * sampleAO;
@@ -211,17 +201,17 @@ vec4 evaluateMXAO(ivec2 pix, vec2 invRes, vec2 aspect)
     float ao = pow(accum.w, pc.Power);
     accum.w  = ao;
 
-    return accum;   // IL in rgb, AO in a
+    return accum;   // IL.rgb, AO.a
 }
 
 // -----------------------------------------------------------------------------
-// Blur support – SpatialFilter1/2-style
+// Blur support – SpatialFilter1/2 style
 // -----------------------------------------------------------------------------
 
 struct BlurData
 {
     vec4 key;   // AO/IL
-    vec4 mask;  // normal.xyz + depth/mask in .w (approx)
+    vec4 mask;  // normal.xyz + depth/mask .w
 };
 
 void blurSample(BlurData center, ivec2 tapPix, vec2 invRes,
@@ -232,8 +222,8 @@ void blurSample(BlurData center, ivec2 tapPix, vec2 invRes,
     tap.key  = imageLoad(mxaoIn, tapPix);
 
     vec4 nTex = texture(gNormals, uv);
-    tap.mask.xyz = GetNormal(uv, gNormals);  // [-1..1]
-    tap.mask.w   = nTex.w;                   // whatever you packed into A (depth/mask)
+    tap.mask.xyz = GetNormal(uv, gNormals);
+    tap.mask.w   = nTex.w; // assumes you packed something depth-ish here
 
     float depthTerm  = saturate(1.0 - abs(tap.mask.w - center.mask.w));
     float normalTerm = saturate(dot(tap.mask.xyz, center.mask.xyz) * 16.0 - 15.0);
@@ -295,7 +285,7 @@ vec4 spatialBlur(ivec2 pix,
 }
 
 // -----------------------------------------------------------------------------
-// Final shaping (SpatialFilter2-like, still separate from scene color)
+// Final shaping (SpatialFilter2-like, AO/IL only – no color composite here)
 // -----------------------------------------------------------------------------
 
 vec4 shapeAOIL(ivec2 pix, vec2 invRes, vec2 bufferSize)
@@ -326,15 +316,15 @@ vec4 shapeAOIL(ivec2 pix, vec2 invRes, vec2 bufferSize)
 }
 
 // -----------------------------------------------------------------------------
-// main
+// main – with a very clear debug behavior for Pass 0
 // -----------------------------------------------------------------------------
 
 void main()
 {
     ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
 
-    vec2 resolution = GetResolution();
     vec2 invRes     = GetInvResolution();
+    vec2 resolution = GetResolution();
     vec2 aspect     = GetAspect(resolution);
 
     if (pix.x >= int(resolution.x) || pix.y >= int(resolution.y))
@@ -342,13 +332,22 @@ void main()
 
     if (pc.Pass == 0)
     {
-        // AO/IL generation – mxaoOut is AO surface
+        // AO/IL generation
         vec4 aoIl = evaluateMXAO(pix, invRes, aspect);
+
+        // DEBUG: if everything is wired correctly, this should never be pure black everywhere.
+        // For now, force AO to something visible so you can see if the pass runs at all:
+        if (pc.DebugView == 1u)
+        {
+            // overwrite with depth for quick sanity check
+            float d = readDepth((vec2(pix) + 0.5) * invRes) / farZ;
+            aoIl = vec4(vec3(d), 1.0);
+        }
+
         imageStore(mxaoOut, pix, aoIl);
     }
     else if (pc.Pass == 1)
     {
-        // Blur 1 – mxaoIn/mxaoOut are AO ping-pong surfaces
         vec4 blurred = spatialBlur(
             pix, invRes, resolution,
             pc.RenderScale, pc.BlurRadius1, pc.BlurSteps1
@@ -357,32 +356,22 @@ void main()
     }
     else if (pc.Pass == 2)
     {
-        // Final blur + shaping, AND composite into scene color
-        // For this pass:
-        //   mxaoIn  = final AO/IL input (CommonTex1)
-        //   mxaoOut = *scene color* STORAGE image (bound from C++)
+        // Final blur + shaping *only*. No in-place scene composite here.
+        // (Your C++ already StretchRect's AOSurface0 onto SceneColor.)
 
         vec4 shaped = shapeAOIL(pix, invRes, resolution);  // IL.rgb + AO.a
         float ao    = shaped.a;
         vec3 il     = shaped.rgb;
 
-        // Read current scene color from mxaoOut (in-place storage)
-        vec4 scene = imageLoad(mxaoOut, pix);
-        vec3 color;
-
         if (pc.DebugView == 1u)
         {
-            // Debug: override scene color with AO only
-            color = vec3(ao);
+            // Output AO as greyscale for debug
+            imageStore(mxaoOut, pix, vec4(vec3(ao), 1.0));
         }
         else
         {
-            // Normal composite: AO multiplicative + IL additive
-            color  = scene.rgb;
-            color *= ao;
-            color += il;
+            // AO in alpha, IL in RGB (how your C++ uses it is up to you)
+            imageStore(mxaoOut, pix, shaped);
         }
-
-        imageStore(mxaoOut, pix, vec4(color, scene.a));
     }
 }
