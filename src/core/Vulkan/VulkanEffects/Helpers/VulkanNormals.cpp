@@ -19,6 +19,7 @@ void FVulkanNormals::FillPushConstants(FVulkanNormalsPushConstants& out,
 
     out.SmoothNumDirs = Settings.SmoothNumDirs;
     out.SmoothNumSteps = Settings.SmoothNumSteps;
+    out.SmoothRadius = Settings.SmoothRadius;
 }
 
 void FVulkanNormals::DestroyResources()
@@ -401,6 +402,22 @@ void FVulkanNormals::BuildSettingsDescriptors()
 
     {
         VulkanSettingDescriptor d{};
+        d.id       = "SmoothRadius";
+        d.label    = "Smooth Radius";
+        d.group    = "Main";
+        d.type     = VulkanSettingType::Float;
+        d.minValue = 0;
+        d.maxValue = 100;
+        d.step     = 0.1f;
+
+        d.getFloat = [this]() { return Settings.SmoothRadius; };
+        d.setFloat = [this](float v) { Settings.SmoothRadius = v; };
+
+        SettingDescs.push_back(std::move(d));
+    }
+    
+    {
+        VulkanSettingDescriptor d{};
         d.id       = "DebugView";
         d.label    = "Debug View";
         d.group    = "Debug";
@@ -442,6 +459,7 @@ void FVulkanNormals::UpdateSettingsFromNvr()
     std::snprintf(section, sizeof(section), "Shaders.%s.Main", shaderId);
     Settings.SmoothNumSteps  = TheSettingManager->GetSettingI(section, "SmoothNumSteps");
     Settings.SmoothNumDirs  = TheSettingManager->GetSettingI(section, "SmoothNumDirs");
+    Settings.SmoothRadius = TheSettingManager->GetSettingF(section, "SmoothRadius");
     
     // Debug group
     std::snprintf(section, sizeof(section), "Shaders.%s.Debug", shaderId);

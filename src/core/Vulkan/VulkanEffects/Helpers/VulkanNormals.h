@@ -8,6 +8,7 @@ struct FVulkanNormalsPushConstants
     UINT Pass = 0;
     UINT SmoothNumDirs   = 16;
     UINT SmoothNumSteps  = 2;
+    float SmoothRadius = 1.0;
 };
 
 // Dummy settings (visible in menu, not yet used by shader)
@@ -15,7 +16,8 @@ struct FVulkanNormalsSettings
 {
     UINT SmoothNumDirs   = 16;
     UINT SmoothNumSteps  = 2;
-    bool  bDebugView    = false;
+    float SmoothRadius = 1.0;
+    bool bDebugView    = false;
 };
 
 class FVulkanNormals

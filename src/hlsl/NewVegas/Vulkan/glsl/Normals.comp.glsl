@@ -19,6 +19,10 @@ layout(push_constant) uniform PushConstants {
     uint  Pass;               // 0 = reconstruct, 1 = smooth
     uint  SmoothNumDirs;      // 4 recommended
     uint  SmoothNumSteps;     // 2 recommended
+    float SmoothRadius;
+    float MinSmoothingAngle;
+    float MaxSmoothingAngle;
+    float CreaseThreshold;
 } pc;
 
 // -----------------------------------------------------------------------------
@@ -125,8 +129,9 @@ vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
 
     vec2 aspect = GetAspectRatio();
 
-    float smoothRadius = 0.04;
-    vec2 scaled_radius = (smoothRadius / max(centerP.z, 1e-6)) * aspect;
+    float smoothRadiusPixels = pc.SmoothRadius;                // radius in pixels
+    vec2 texelSize          = texel;              // 1 / resolution
+    vec2 scaled_radius      = smoothRadiusPixels * texelSize * aspect;
 
     uint dirs  = max(1u, pc.SmoothNumDirs);
     uint steps = max(1u, pc.SmoothNumSteps);
@@ -189,19 +194,66 @@ vec3 SmoothNormal_MK1(ivec2 pix, ivec2 imgSize, vec2 texel)
             vec3 tapP = reconstructPosition(tap_uv);
 
             vec3 dp   = tapP - centerP;
-            float dist2 = dot(dp, dp);
+            float dist2_raw = dot(dp, dp);
 
-            // Distance weight (your original MK1-style term)
-            float dist_w = saturate(1.0 - dist2 * 14.0 / searchR);
+            // How different are the depths (relative)?
+            float zCenter = max(centerP.z, 1.0);
+            float dzRel   = abs(tapP.z - centerP.z) / zCenter;
 
-            // Only lift distance weight, NEVER lift angle weight
-            dist_w = max(dist_w, 0.15);
+            // Depth-normalized distance: same surface separation feels "closer" at large Z
+            float dist2_norm = dist2_raw / (zCenter * zCenter);
 
+            // Only relax distance falloff for taps on (roughly) the same depth layer
+            // and only when the pixel is far enough away.
+
+            // "Same surface" depth threshold (in relative terms)
+            const float depthSameThreshold = 0.08;  // 8% relative depth difference
+
+            // Gamebryo scale: ~70 units per meter
+            // So 500 ≈ 7m, 2000 ≈ 28m
+            const float z0 = 500.0;   // start "helping" far geometry (~7m)
+            const float z1 = 2000.0;  // fully relaxed by this depth (~28m)
+
+            float farT = saturate((zCenter - z0) / (z1 - z0));
+
+            float dist2_mix;
+            if (dzRel < depthSameThreshold)
+            {
+                // Same depth layer: blend between raw and normalized distance as we go far
+                dist2_mix = mix(dist2_raw, dist2_norm, farT);
+            }
+            else
+            {
+                // Different depth layers: keep raw distance (strong falloff, halo-safe)
+                dist2_mix = dist2_raw;
+            }
+
+            // Distance weight using mixed distance
+            // 1. Base distance weight
+            float dist_w = saturate(1.0 - dist2_mix / searchR);
+
+            // 2. Determine if this tap is "same surface"
+            bool sameSurface =
+                (creaseDot >= pc.CreaseThreshold) &&
+                (dzRel < depthSameThreshold) &&
+                (nd_acc >= 0.90) &&
+                (angle_w > 0.0);
+
+            // 3. Apply the minimum ONLY if it's same-surface AND center is close to camera
+            //    Reason: far surfaces already get normalized smoothing; close surfaces need help.
+            float minFloor = 0.3;
+            if (sameSurface)
+            {
+                dist_w = max(dist_w, minFloor);
+            }
+
+            // 4. Final weight
             float w = saturate((3.0 * dist_w * angle_w) / searchR);
             if (w <= 0.0)
                 continue;
 
             accum[i] = mix(accum[i], tapN, w);
+
         }
     }
 
